@@ -8,7 +8,9 @@
 // Imports
 // ============================================================================
 
-// None
+use bitflags::bitflags;
+
+use neotron_ffi::{FfiBuffer, FfiByteSlice, FfiString};
 
 // ============================================================================
 // Constants
@@ -16,7 +18,12 @@
 
 /// Maximum length of a filename (with no directory components), including the
 /// extension.
-const MAX_FILENAME_LEN: usize = 11;
+pub const MAX_FILENAME_LEN: usize = 11;
+
+/// Maximum length of a path to a file.
+///
+/// This is shorter than on MS-DOS, to save on memory.
+pub const MAX_PATH_LEN: usize = 64;
 
 // ============================================================================
 // Types
@@ -26,126 +33,222 @@ const MAX_FILENAME_LEN: usize = 11;
 /// finds and calls this function.
 pub type OsStartFn = extern "C" fn(&crate::Api) -> !;
 
+/// The result type for any SDK API function.
+///
+/// Like a [`neotron_ffi::FfiResult`] but the error type is [`Error`].
+pub type Result<T> = neotron_ffi::FfiResult<T, Error>;
+
+/// The syscalls provided by the Neotron OS to a Neotron Application.
 #[repr(C)]
 pub struct Api {
     /// Open a file, given a path as UTF-8 string.
     ///
+    /// If the file does not exist, or is already open, it returns an error.
+    ///
     /// Path may be relative to current directory, or it may be an absolute
     /// path.
-    open: fn(path: *const u8, path_len: usize, flags: i32) -> Result<FileHandle>,
+    pub open: fn(path: FfiString, flags: FileFlags) -> Result<FileHandle>,
     /// Close a previously opened file.
-    close: fn(fd: FileHandle) -> Result<()>,
-    /// Write to an open file, returning how much was actually written.
-    write: fn(fd: FileHandle, buffer: *const u8, buffer_len: usize) -> Result<usize>,
+    pub close: fn(fd: FileHandle) -> Result<()>,
+    /// Write to an open file handle, blocking until everything is written.
+    ///
+    /// Some files do not support writing and will produce an error.
+    pub write: fn(fd: FileHandle, buffer: FfiByteSlice) -> Result<()>,
     /// Read from an open file, returning how much was actually read.
-    read: fn(fd: FileHandle, buffer: *mut u8, buffer_len: usize) -> Result<usize>,
-    /// Move the file offset (for the given file handle) to the given position
-    seek_set: fn(fd: FileHandle, position: u64) -> Result<()>,
+    ///
+    /// If you hit the end of the file, you might get less data than you asked for.
+    pub read: fn(fd: FileHandle, buffer: FfiBuffer) -> Result<usize>,
+    /// Move the file offset (for the given file handle) to the given position.
+    ///
+    /// Some files do not support seeking and will produce an error.
+    pub seek_set: fn(fd: FileHandle, position: u64) -> Result<()>,
     /// Move the file offset (for the given file handle) relative to the current position
-    seek_cur: fn(fd: FileHandle, offset: i64) -> Result<()>,
+    ///
+    /// Some files do not support seeking and will produce an error.
+    pub seek_cur: fn(fd: FileHandle, offset: i64) -> Result<()>,
     /// Move the file offset (for the given file handle) to the end of the file
-    seek_end: fn(fd: FileHandle) -> Result<()>,
+    ///
+    /// Some files do not support seeking and will produce an error.
+    pub seek_end: fn(fd: FileHandle) -> Result<()>,
     /// Rename a file
-    rename: fn(
-        old_path: *const u8,
-        old_path_len: usize,
-        new_path: *const u8,
-        new_path_len: usize,
-    ) -> Result<()>,
+    pub rename: fn(old_path: FfiString, new_path: FfiString) -> Result<()>,
     /// Perform a special I/O control operation.
-    ioctl: fn(fd: FileHandle, command: u64, value: u64) -> Result<u64>,
+    pub ioctl: fn(fd: FileHandle, command: u64, value: u64) -> Result<u64>,
     /// Open a directory, given a path as a UTF-8 string.
-    opendir: fn(path: *const u8, path_len: usize) -> Result<DirHandle>,
+    pub opendir: fn(path: FfiString) -> Result<DirHandle>,
     /// Close a previously opened directory.
-    closedir: fn(dir: DirHandle) -> Result<()>,
+    pub closedir: fn(dir: DirHandle) -> Result<()>,
     /// Read from an open directory
-    readdir: fn(dir: DirHandle, dir_entry: *mut DirEntry) -> Result<()>,
+    pub readdir: fn(dir: DirHandle) -> Result<DirEntry>,
     /// Get information about a file
-    stat: fn(path: *const u8, path_len: usize, stat: *mut Stat) -> Result<()>,
+    pub stat: fn(path: FfiString) -> Result<Stat>,
     /// Get information about an open file
-    fstat: fn(fd: FileHandle, stat: *mut Stat) -> Result<()>,
+    pub fstat: fn(fd: FileHandle) -> Result<Stat>,
+    /// Delete a file or directory
+    ///
+    /// If the file is currently open, or the directory has anything in it, this
+    /// will give an error.
+    pub delete: fn(path: FfiString) -> Result<()>,
     /// Change the current directory
-    chdir: fn(path: *const u8, path_len: usize) -> Result<()>,
+    ///
+    /// Relative file paths are taken to be relative to the current directory.
+    ///
+    /// Unlike on MS-DOS, there is only one current directory for the whole
+    /// system, not one per drive.
+    pub chdir: fn(path: FfiString) -> Result<()>,
     /// Change the current directory to the open directory
-    dchdir: fn(dir: DirHandle) -> Result<()>,
+    ///
+    /// Relative file paths are taken to be relative to the current directory.
+    ///
+    /// Unlike on MS-DOS, there is only one current directory for the whole
+    /// system, not one per drive.
+    pub dchdir: fn(dir: DirHandle) -> Result<()>,
     /// Allocate some memory
-    malloc: fn(size: usize, alignment: u8) -> Result<*mut ()>,
+    pub malloc: fn(size: usize, alignment: usize) -> Result<core::ptr::NonNull<[u8]>>,
     /// Free some previously allocated memory
-    free: fn(ptr: *mut (), size: usize, alignment: u8),
+    pub free: fn(ptr: core::ptr::NonNull<[u8]>, size: usize, alignment: usize),
 }
-
-/// Represents a time on a clock with millisecond accuracy.
-#[repr(C)]
-pub struct SystemTime(u64);
-
-/// Represents an open file
-#[repr(C)]
-pub struct FileHandle(u8);
-
-/// Represents an open directory
-#[repr(C)]
-pub struct DirHandle(u8);
 
 /// Describes how something has failed
 #[repr(C)]
-pub struct Error(u32);
+pub enum Error {
+    FileNotFound,
+    FileReadOnly,
+    EndOfFile,
+}
+
+/// Represents an open file
+#[repr(C)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct FileHandle(u8);
+
+impl FileHandle {
+    /// Construct a new `FileHandle` from an integer.
+    ///
+    /// Only the OS should call this.
+    ///
+    /// # Safety
+    ///
+    /// The integer given must be a valid index for an open File.
+    #[cfg(feature = "os")]
+    pub const fn new(value: u8) -> FileHandle {
+        FileHandle(value)
+    }
+
+    /// Get the numeric value of this File Handle
+    pub const fn value(&self) -> u8 {
+        self.0
+    }
+}
+
+/// Represents an open directory
+#[repr(C)]
+#[derive(Debug, PartialEq, Eq)]
+pub struct DirHandle(u8);
+
+impl DirHandle {
+    /// Construct a new `DirHandle` from an integer.
+    ///
+    /// Only the OS should call this.
+    ///
+    /// # Safety
+    ///
+    /// The integer given must be a valid index for an open Directory.
+    #[cfg(feature = "os")]
+    pub const fn new(value: u8) -> DirHandle {
+        DirHandle(value)
+    }
+
+    /// Get the numeric value of this Directory Handle
+    pub const fn value(&self) -> u8 {
+        self.0
+    }
+}
 
 /// Describes an entry in a directory.
 ///
 /// This is set up for 8.3 filenames on MS-DOS FAT32 partitions currently.
 #[repr(C)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DirEntry {
     /// The name and extension of the file
     pub name: [u8; MAX_FILENAME_LEN],
-    /// File attributes (Directory, Volume, etc)
-    pub attr: u8,
-    /// How big is this file
-    pub file_size: u64,
-    /// When was the file created
-    pub ctime: SystemTime,
-    /// When was the last modified
-    pub mtime: SystemTime,
+    /// File properties
+    pub properties: Stat,
 }
 
 /// Describes a file on disk.
 ///
 /// This is set up for 8.3 filenames on MS-DOS FAT32 partitions currently.
 #[repr(C)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Stat {
-    /// Which volume is this file on
-    pub volume: u8,
-    /// File attributes (Directory, Volume, etc)
-    pub attr: u8,
     /// How big is this file
     pub file_size: u64,
     /// When was the file created
-    pub ctime: SystemTime,
+    pub ctime: FileTime,
     /// When was the last modified
-    pub mtime: SystemTime,
+    pub mtime: FileTime,
+    /// File attributes (Directory, Volume, etc)
+    pub attr: FileAttributes,
 }
 
-/// All API functions which can fail return this type. We don't use the
-/// `Result` type from the standard library because that isn't FFI safe and
-/// may change layout between compiler versions.
-#[repr(C)]
-pub enum Result<T> {
-    /// The operation succeeded (the same as `core::result::Result::Ok`).
-    Ok(T),
-    /// The operation failed (the same as `core::result::Result::Err`).
-    Err(Error),
+bitflags! {
+    #[repr(C)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    /// Describes the attributes of a file.
+    pub struct FileFlags: u8 {
+        /// Enable write support for this file.
+        const WRITE = 0x01;
+        /// Create the file if it doesn't exist.
+        const CREATE = 0x02;
+        /// Truncate the file to zero length upon opening.
+        const TRUNCATE = 0x04;
+    }
 }
 
-/// All API functions which take/return optional values return this type. We
-/// don't use the `Option` type from the standard library because that isn't
-/// FFI safe and may change layout between compiler versions.
+bitflags! {
+    #[repr(C)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    /// The attributes a file on disk can have.alloc
+    ///
+    /// Based on that supported by the FAT32 file system.
+    pub struct FileAttributes: u8 {
+        /// File is read-only
+        const READ_ONLY = 0x01;
+        /// File should not appear in directory listing
+        const HIDDEN = 0x02;
+        /// File should not be moved on disk
+        const SYSTEM = 0x04;
+        /// File is a volume label
+        const VOLUME = 0x08;
+        /// File is a directory
+        const DIRECTORY = 0x10;
+        /// File has not been backed up
+        const ARCHIVE = 0x20;
+        /// File is actually a device
+        const DEVICE = 0x40;
+    }
+}
+
+/// Represents an instant in time, in the local time zone.
 #[repr(C)]
-pub enum Option<T> {
-    /// There is some data (the same as `core::option::Option::Some`)
-    Some(T),
-    /// There is no data (the same as `core::option::Option::None`)
-    None,
+#[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq)]
+pub struct FileTime {
+    /// Add 1970 to this file to get the calendar year
+    pub year_since_1970: u8,
+    /// Add one to this value to get the calendar month
+    pub zero_indexed_month: u8,
+    /// Add one to this value to get the calendar day
+    pub zero_indexed_day: u8,
+    /// The number of hours past midnight
+    pub hours: u8,
+    /// The number of minutes past the hour
+    pub minutes: u8,
+    /// The number of seconds past the minute
+    pub seconds: u8,
 }
 
 // ============================================================================
-// Impls
+// End of File
 // ============================================================================
