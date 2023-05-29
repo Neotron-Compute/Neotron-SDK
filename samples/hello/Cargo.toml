@@ -8,9 +8,10 @@ description = "Hello World for Neotron systems"
 
 [dependencies]
 neotron-sdk = { path = "../..", features = ["application"] }
-
-[profile.dev]
-panic = "abort"
-
-[profile.release]
-panic = "abort"
+#
+# NB: This is in a workspace, so these settings are in the workspace file.
+#[profile.dev]
+#panic = "abort"
+#
+#[profile.release]
+#panic = "abort"
