@@ -10,7 +10,7 @@
 
 use bitflags::bitflags;
 
-use neotron_ffi::{FfiBuffer, FfiByteSlice, FfiString};
+pub use neotron_ffi::{FfiBuffer, FfiByteSlice, FfiString};
 
 // ============================================================================
 // Constants
@@ -25,13 +25,19 @@ pub const MAX_FILENAME_LEN: usize = 11;
 /// This is shorter than on MS-DOS, to save on memory.
 pub const MAX_PATH_LEN: usize = 64;
 
+#[cfg(feature = "application")]
+extern "C" {
+    fn main() -> i32;
+}
+
 // ============================================================================
 // Types
 // ============================================================================
 
-/// The type of the function which starts up the Operating System. The BIOS
-/// finds and calls this function.
-pub type OsStartFn = extern "C" fn(&crate::Api) -> !;
+/// The type of the application entry-point.
+///
+/// The OS calls a function of this type.
+pub type AppStartFn = extern "C" fn(*mut crate::Api) -> i32;
 
 /// The result type for any SDK API function.
 ///
@@ -47,74 +53,85 @@ pub struct Api {
     ///
     /// Path may be relative to current directory, or it may be an absolute
     /// path.
-    pub open: fn(path: FfiString, flags: FileFlags) -> Result<FileHandle>,
+    pub open: extern "C" fn(path: FfiString, flags: FileFlags) -> Result<FileHandle>,
     /// Close a previously opened file.
-    pub close: fn(fd: FileHandle) -> Result<()>,
+    pub close: extern "C" fn(fd: FileHandle) -> Result<()>,
     /// Write to an open file handle, blocking until everything is written.
     ///
     /// Some files do not support writing and will produce an error.
-    pub write: fn(fd: FileHandle, buffer: FfiByteSlice) -> Result<()>,
+    pub write: extern "C" fn(fd: FileHandle, buffer: FfiByteSlice) -> Result<()>,
     /// Read from an open file, returning how much was actually read.
     ///
     /// If you hit the end of the file, you might get less data than you asked for.
-    pub read: fn(fd: FileHandle, buffer: FfiBuffer) -> Result<usize>,
+    pub read: extern "C" fn(fd: FileHandle, buffer: FfiBuffer) -> Result<usize>,
     /// Move the file offset (for the given file handle) to the given position.
     ///
     /// Some files do not support seeking and will produce an error.
-    pub seek_set: fn(fd: FileHandle, position: u64) -> Result<()>,
+    pub seek_set: extern "C" fn(fd: FileHandle, position: u64) -> Result<()>,
     /// Move the file offset (for the given file handle) relative to the current position
     ///
     /// Some files do not support seeking and will produce an error.
-    pub seek_cur: fn(fd: FileHandle, offset: i64) -> Result<()>,
+    pub seek_cur: extern "C" fn(fd: FileHandle, offset: i64) -> Result<()>,
     /// Move the file offset (for the given file handle) to the end of the file
     ///
     /// Some files do not support seeking and will produce an error.
-    pub seek_end: fn(fd: FileHandle) -> Result<()>,
+    pub seek_end: extern "C" fn(fd: FileHandle) -> Result<()>,
     /// Rename a file
-    pub rename: fn(old_path: FfiString, new_path: FfiString) -> Result<()>,
+    pub rename: extern "C" fn(old_path: FfiString, new_path: FfiString) -> Result<()>,
     /// Perform a special I/O control operation.
-    pub ioctl: fn(fd: FileHandle, command: u64, value: u64) -> Result<u64>,
+    pub ioctl: extern "C" fn(fd: FileHandle, command: u64, value: u64) -> Result<u64>,
     /// Open a directory, given a path as a UTF-8 string.
-    pub opendir: fn(path: FfiString) -> Result<DirHandle>,
+    pub opendir: extern "C" fn(path: FfiString) -> Result<DirHandle>,
     /// Close a previously opened directory.
-    pub closedir: fn(dir: DirHandle) -> Result<()>,
+    pub closedir: extern "C" fn(dir: DirHandle) -> Result<()>,
     /// Read from an open directory
-    pub readdir: fn(dir: DirHandle) -> Result<DirEntry>,
+    pub readdir: extern "C" fn(dir: DirHandle) -> Result<DirEntry>,
     /// Get information about a file
-    pub stat: fn(path: FfiString) -> Result<Stat>,
+    pub stat: extern "C" fn(path: FfiString) -> Result<Stat>,
     /// Get information about an open file
-    pub fstat: fn(fd: FileHandle) -> Result<Stat>,
+    pub fstat: extern "C" fn(fd: FileHandle) -> Result<Stat>,
     /// Delete a file or directory
     ///
     /// If the file is currently open, or the directory has anything in it, this
     /// will give an error.
-    pub delete: fn(path: FfiString) -> Result<()>,
+    pub delete: extern "C" fn(path: FfiString) -> Result<()>,
     /// Change the current directory
     ///
     /// Relative file paths are taken to be relative to the current directory.
     ///
     /// Unlike on MS-DOS, there is only one current directory for the whole
     /// system, not one per drive.
-    pub chdir: fn(path: FfiString) -> Result<()>,
+    pub chdir: extern "C" fn(path: FfiString) -> Result<()>,
     /// Change the current directory to the open directory
     ///
     /// Relative file paths are taken to be relative to the current directory.
     ///
     /// Unlike on MS-DOS, there is only one current directory for the whole
     /// system, not one per drive.
-    pub dchdir: fn(dir: DirHandle) -> Result<()>,
+    pub dchdir: extern "C" fn(dir: DirHandle) -> Result<()>,
     /// Allocate some memory
-    pub malloc: fn(size: usize, alignment: usize) -> Result<core::ptr::NonNull<[u8]>>,
+    pub malloc: extern "C" fn(size: usize, alignment: usize) -> Result<*mut core::ffi::c_void>,
     /// Free some previously allocated memory
-    pub free: fn(ptr: core::ptr::NonNull<[u8]>, size: usize, alignment: usize),
+    pub free: extern "C" fn(ptr: *mut core::ffi::c_void, size: usize, alignment: usize),
 }
 
 /// Describes how something has failed
 #[repr(C)]
 pub enum Error {
+    /// The given file path was not found
     FileNotFound,
+    /// Tried to write to a read-only file
     FileReadOnly,
+    /// Reached the end of the file
     EndOfFile,
+    /// The API has not been implemented
+    Unimplemented,
+    /// An invalid argument was given to the API
+    InvalidArg,
+    /// A bad file handle was given to the API
+    BadFileHandle,
+    /// An device-specific error occurred. Look at the BIOS source for more details.
+    DeviceSpecific,
 }
 
 /// Represents an open file
@@ -123,6 +140,9 @@ pub enum Error {
 pub struct FileHandle(u8);
 
 impl FileHandle {
+    /// The magic file ID for Standard Output
+    const STDOUT: u8 = 0;
+
     /// Construct a new `FileHandle` from an integer.
     ///
     /// Only the OS should call this.
@@ -133,6 +153,11 @@ impl FileHandle {
     #[cfg(feature = "os")]
     pub const fn new(value: u8) -> FileHandle {
         FileHandle(value)
+    }
+
+    /// Create a file handle for Standard Output
+    pub const fn new_stdout() -> FileHandle {
+        FileHandle(Self::STDOUT)
     }
 
     /// Get the numeric value of this File Handle
@@ -248,6 +273,46 @@ pub struct FileTime {
     /// The number of seconds past the minute
     pub seconds: u8,
 }
+
+// ============================================================================
+// Functions
+// ============================================================================
+
+#[cfg(feature = "application")]
+mod application {
+    use super::*;
+    use core::sync::atomic::{AtomicPtr, Ordering};
+
+    #[link_section = ".entry_point"]
+    #[used]
+    pub static APP_ENTRY: AppStartFn = app_entry;
+
+    static API: AtomicPtr<Api> = AtomicPtr::new(core::ptr::null_mut());
+
+    /// The function the OS calls to start the application.
+    ///
+    /// Will jump to the application entry point, and `extern "C"` function
+    /// called `main`.
+    extern "C" fn app_entry(api: *mut crate::Api) -> i32 {
+        API.store(api as *mut Api, Ordering::Relaxed);
+        unsafe { main() }
+    }
+
+    /// Write to a file handle.
+    pub fn write(fd: FileHandle, data: &[u8]) -> Result<()> {
+        let api = get_api();
+        (api.write)(fd, FfiByteSlice::new(data))
+    }
+
+    /// Get the API structure so you can call APIs manually.
+    fn get_api() -> &'static Api {
+        let ptr = API.load(Ordering::Relaxed);
+        unsafe { ptr.as_ref().unwrap() }
+    }
+}
+
+#[cfg(feature = "application")]
+pub use application::*;
 
 // ============================================================================
 // End of File
