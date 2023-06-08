@@ -5,8 +5,8 @@ extern crate neotron_sdk;
 
 #[no_mangle]
 extern "C" fn main() -> i32 {
-    let stdout = neotron_sdk::FileHandle::new_stdout();
-    neotron_sdk::write(stdout, b"Hello, world\n");
+    let stdout = neotron_sdk::stdout();
+    stdout.write(b"Hello, world\n").unwrap();
     0
 }
 

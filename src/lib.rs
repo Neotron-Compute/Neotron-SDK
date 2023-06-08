@@ -282,6 +282,21 @@ pub fn free(_ptr: *mut core::ffi::c_void, _size: usize, _alignment: usize) {
     todo!()
 }
 
+/// Get a handle for Standard Input
+pub fn stdin() -> File {
+    File(file::Handle::new_stdin())
+}
+
+/// Get a handle for Standard Output
+pub fn stdout() -> File {
+    File(file::Handle::new_stdout())
+}
+
+/// Get a handle for Standard Error
+pub fn stderr() -> File {
+    File(file::Handle::new_stderr())
+}
+
 /// Get the API structure so we can call APIs manually.
 ///
 /// If you managed to not have `app_entry` called on start-up, this will panic.
