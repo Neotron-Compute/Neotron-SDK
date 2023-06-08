@@ -8,27 +8,40 @@
 // Imports
 // ============================================================================
 
-use bitflags::bitflags;
+use core::sync::atomic::{AtomicPtr, Ordering};
 
 pub use neotron_ffi::{FfiBuffer, FfiByteSlice, FfiString};
+
+pub use neotron_api::{dir, file, Api, Error};
 
 // ============================================================================
 // Constants
 // ============================================================================
-
-/// Maximum length of a filename (with no directory components), including the
-/// extension.
-pub const MAX_FILENAME_LEN: usize = 11;
 
 /// Maximum length of a path to a file.
 ///
 /// This is shorter than on MS-DOS, to save on memory.
 pub const MAX_PATH_LEN: usize = 64;
 
-#[cfg(feature = "application")]
 extern "C" {
-    fn main() -> i32;
+    /// This is what the user's application entry point must be called.
+    ///
+    /// They can return `0` for success, or anything else to indicate an error.
+    fn neotron_main() -> i32;
 }
+
+// ============================================================================
+// Static Variables
+// ============================================================================
+
+#[link_section = ".entry_point"]
+#[used]
+pub static APP_ENTRY: AppStartFn = app_entry;
+
+/// Holds a pointer to the OS API provided by the OS on start-up.
+///
+/// Once you've hit the application `main()`, this will be non-null.
+static API: AtomicPtr<Api> = AtomicPtr::new(core::ptr::null_mut());
 
 // ============================================================================
 // Types
@@ -39,280 +52,243 @@ extern "C" {
 /// The OS calls a function of this type.
 pub type AppStartFn = extern "C" fn(*mut crate::Api) -> i32;
 
-/// The result type for any SDK API function.
+/// The result type for any SDK function.
 ///
-/// Like a [`neotron_ffi::FfiResult`] but the error type is [`Error`].
-pub type Result<T> = neotron_ffi::FfiResult<T, Error>;
+/// Like a [`core::result::Result`] but the error type is [`Error`].
+pub type Result<T> = core::result::Result<T, Error>;
 
-/// The syscalls provided by the Neotron OS to a Neotron Application.
-#[repr(C)]
-pub struct Api {
+/// Represents an open File
+pub struct File(file::Handle);
+
+impl File {
     /// Open a file, given a path as UTF-8 string.
     ///
     /// If the file does not exist, or is already open, it returns an error.
     ///
     /// Path may be relative to current directory, or it may be an absolute
     /// path.
-    pub open: extern "C" fn(path: FfiString, flags: FileFlags) -> Result<FileHandle>,
-    /// Close a previously opened file.
-    pub close: extern "C" fn(fd: FileHandle) -> Result<()>,
+    ///
+    /// # Limitations
+    ///
+    /// * You cannot open a file if it is currently open.
+    /// * Paths must confirm to the rules for the filesystem for the given drive.
+    /// * Relative paths are taken relative to the current directory (see `Api::chdir`).
+    pub fn open(path: file::Path, flags: file::Flags) -> Result<Self> {
+        let api = get_api();
+        match (api.open)(path, flags) {
+            neotron_ffi::FfiResult::Ok(handle) => Ok(File(handle)),
+            neotron_ffi::FfiResult::Err(e) => Err(e),
+        }
+    }
+
     /// Write to an open file handle, blocking until everything is written.
     ///
-    /// Some files do not support writing and will produce an error.
-    pub write: extern "C" fn(fd: FileHandle, buffer: FfiByteSlice) -> Result<()>,
+    /// Some files do not support writing and will produce an error. You will
+    /// also get an error if you run out of disk space.
+    ///
+    /// The `buffer` is only borrowed for the duration of the function call and
+    /// is then forgotten.
+    pub fn write(&self, buffer: &[u8]) -> Result<()> {
+        let api = get_api();
+        match (api.write)(self.0, FfiByteSlice::new(buffer)) {
+            neotron_ffi::FfiResult::Ok(_) => Ok(()),
+            neotron_ffi::FfiResult::Err(e) => Err(e),
+        }
+    }
+
     /// Read from an open file, returning how much was actually read.
     ///
-    /// If you hit the end of the file, you might get less data than you asked for.
-    pub read: extern "C" fn(fd: FileHandle, buffer: FfiBuffer) -> Result<usize>,
+    /// You might get less data than you asked for. If you do an `Api::read` and
+    /// you are already at the end of the file you will get
+    /// `Err(Error::EndOfFile)`.
+    ///
+    /// Data is stored to the given `buffer. The `buffer` is only borrowed for
+    /// the duration of the function call and is then forgotten.
+    pub fn read(&self, buffer: &mut [u8]) -> Result<usize> {
+        let api = get_api();
+        match (api.read)(self.0, FfiBuffer::new(buffer)) {
+            neotron_ffi::FfiResult::Ok(n) => Ok(n),
+            neotron_ffi::FfiResult::Err(e) => Err(e),
+        }
+    }
+
+    /// Close a file
+    pub fn close(self) -> Result<()> {
+        let api = get_api();
+        // We could panic on error, but let's silently ignore it for now
+        let result = (api.close)(self.0);
+        core::mem::forget(self);
+        result.into()
+    }
+
     /// Move the file offset (for the given file handle) to the given position.
     ///
     /// Some files do not support seeking and will produce an error.
-    pub seek_set: extern "C" fn(fd: FileHandle, position: u64) -> Result<()>,
-    /// Move the file offset (for the given file handle) relative to the current position
+    pub fn seek_set(&self, position: u64) -> Result<()> {
+        let api = get_api();
+        match (api.seek_set)(self.0, position) {
+            neotron_ffi::FfiResult::Ok(_) => Ok(()),
+            neotron_ffi::FfiResult::Err(e) => Err(e),
+        }
+    }
+
+    /// Move the file offset (for the given file handle) relative to the current position.
+    ///
+    /// Returns the new position, or an error.
     ///
     /// Some files do not support seeking and will produce an error.
-    pub seek_cur: extern "C" fn(fd: FileHandle, offset: i64) -> Result<()>,
+    pub fn seek_cur(&self, offset: i64) -> Result<u64> {
+        let api = get_api();
+        match (api.seek_cur)(self.0, offset) {
+            neotron_ffi::FfiResult::Ok(new_offset) => Ok(new_offset),
+            neotron_ffi::FfiResult::Err(e) => Err(e),
+        }
+    }
+
     /// Move the file offset (for the given file handle) to the end of the file
     ///
+    /// Returns the new position, or an error.
+    ///
     /// Some files do not support seeking and will produce an error.
-    pub seek_end: extern "C" fn(fd: FileHandle) -> Result<()>,
-    /// Rename a file
-    pub rename: extern "C" fn(old_path: FfiString, new_path: FfiString) -> Result<()>,
+    pub fn seek_end(&self) -> Result<u64> {
+        let api = get_api();
+        match (api.seek_end)(self.0) {
+            neotron_ffi::FfiResult::Ok(new_offset) => Ok(new_offset),
+            neotron_ffi::FfiResult::Err(e) => Err(e),
+        }
+    }
+
+    /// Rename a file.
+    ///
+    /// # Limitations
+    ///
+    /// * You cannot rename a file if it is currently open.
+    /// * You cannot rename a file where the `old_path` and the `new_path` are
+    /// not on the same drive.
+    /// * Paths must confirm to the rules for the filesystem for the given drive.
+    pub fn rename(old_path: file::Path, new_path: file::Path) -> Result<()> {
+        let api = get_api();
+        match (api.rename)(old_path, new_path) {
+            neotron_ffi::FfiResult::Ok(_) => Ok(()),
+            neotron_ffi::FfiResult::Err(e) => Err(e),
+        }
+    }
+
     /// Perform a special I/O control operation.
-    pub ioctl: extern "C" fn(fd: FileHandle, command: u64, value: u64) -> Result<u64>,
-    /// Open a directory, given a path as a UTF-8 string.
-    pub opendir: extern "C" fn(path: FfiString) -> Result<DirHandle>,
-    /// Close a previously opened directory.
-    pub closedir: extern "C" fn(dir: DirHandle) -> Result<()>,
-    /// Read from an open directory
-    pub readdir: extern "C" fn(dir: DirHandle) -> Result<DirEntry>,
-    /// Get information about a file
-    pub stat: extern "C" fn(path: FfiString) -> Result<Stat>,
-    /// Get information about an open file
-    pub fstat: extern "C" fn(fd: FileHandle) -> Result<Stat>,
-    /// Delete a file or directory
     ///
-    /// If the file is currently open, or the directory has anything in it, this
-    /// will give an error.
-    pub delete: extern "C" fn(path: FfiString) -> Result<()>,
-    /// Change the current directory
-    ///
-    /// Relative file paths are taken to be relative to the current directory.
-    ///
-    /// Unlike on MS-DOS, there is only one current directory for the whole
-    /// system, not one per drive.
-    pub chdir: extern "C" fn(path: FfiString) -> Result<()>,
-    /// Change the current directory to the open directory
-    ///
-    /// Relative file paths are taken to be relative to the current directory.
-    ///
-    /// Unlike on MS-DOS, there is only one current directory for the whole
-    /// system, not one per drive.
-    pub dchdir: extern "C" fn(dir: DirHandle) -> Result<()>,
-    /// Allocate some memory
-    pub malloc: extern "C" fn(size: usize, alignment: usize) -> Result<*mut core::ffi::c_void>,
-    /// Free some previously allocated memory
-    pub free: extern "C" fn(ptr: *mut core::ffi::c_void, size: usize, alignment: usize),
-}
-
-/// Describes how something has failed
-#[repr(C)]
-pub enum Error {
-    /// The given file path was not found
-    FileNotFound,
-    /// Tried to write to a read-only file
-    FileReadOnly,
-    /// Reached the end of the file
-    EndOfFile,
-    /// The API has not been implemented
-    Unimplemented,
-    /// An invalid argument was given to the API
-    InvalidArg,
-    /// A bad file handle was given to the API
-    BadFileHandle,
-    /// An device-specific error occurred. Look at the BIOS source for more details.
-    DeviceSpecific,
-}
-
-/// Represents an open file
-#[repr(C)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct FileHandle(u8);
-
-impl FileHandle {
-    /// The magic file ID for Standard Output
-    const STDOUT: u8 = 0;
-
-    /// Construct a new `FileHandle` from an integer.
-    ///
-    /// Only the OS should call this.
-    ///
-    /// # Safety
-    ///
-    /// The integer given must be a valid index for an open File.
-    #[cfg(feature = "os")]
-    pub const fn new(value: u8) -> FileHandle {
-        FileHandle(value)
+    /// The allowed values of `command` and `value` are TBD.
+    pub fn ioctl(&self, command: u64, value: u64) -> Result<u64> {
+        let api = get_api();
+        match (api.ioctl)(self.0, command, value) {
+            neotron_ffi::FfiResult::Ok(output) => Ok(output),
+            neotron_ffi::FfiResult::Err(e) => Err(e),
+        }
     }
 
-    /// Create a file handle for Standard Output
-    pub const fn new_stdout() -> FileHandle {
-        FileHandle(Self::STDOUT)
-    }
-
-    /// Get the numeric value of this File Handle
-    pub const fn value(&self) -> u8 {
-        self.0
+    /// Get information about this file.
+    pub fn stat(&self) -> Result<file::Stat> {
+        let api = get_api();
+        match (api.fstat)(self.0) {
+            neotron_ffi::FfiResult::Ok(output) => Ok(output),
+            neotron_ffi::FfiResult::Err(e) => Err(e),
+        }
     }
 }
 
-/// Represents an open directory
-#[repr(C)]
-#[derive(Debug, PartialEq, Eq)]
-pub struct DirHandle(u8);
-
-impl DirHandle {
-    /// Construct a new `DirHandle` from an integer.
-    ///
-    /// Only the OS should call this.
-    ///
-    /// # Safety
-    ///
-    /// The integer given must be a valid index for an open Directory.
-    #[cfg(feature = "os")]
-    pub const fn new(value: u8) -> DirHandle {
-        DirHandle(value)
-    }
-
-    /// Get the numeric value of this Directory Handle
-    pub const fn value(&self) -> u8 {
-        self.0
+impl core::ops::Drop for File {
+    fn drop(&mut self) {
+        let api = get_api();
+        // We could panic on error, but let's silently ignore it for now.
+        // If you care, call `file.close()`.
+        let _ = (api.close)(self.0);
     }
 }
 
-/// Describes an entry in a directory.
-///
-/// This is set up for 8.3 filenames on MS-DOS FAT32 partitions currently.
-#[repr(C)]
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct DirEntry {
-    /// The name and extension of the file
-    pub name: [u8; MAX_FILENAME_LEN],
-    /// File properties
-    pub properties: Stat,
-}
+/// Represents an open directory that we are iterating through.
+pub struct ReadDir(dir::Handle);
 
-/// Describes a file on disk.
-///
-/// This is set up for 8.3 filenames on MS-DOS FAT32 partitions currently.
-#[repr(C)]
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Stat {
-    /// How big is this file
-    pub file_size: u64,
-    /// When was the file created
-    pub ctime: FileTime,
-    /// When was the last modified
-    pub mtime: FileTime,
-    /// File attributes (Directory, Volume, etc)
-    pub attr: FileAttributes,
-}
-
-bitflags! {
-    #[repr(C)]
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    /// Describes the attributes of a file.
-    pub struct FileFlags: u8 {
-        /// Enable write support for this file.
-        const WRITE = 0x01;
-        /// Create the file if it doesn't exist.
-        const CREATE = 0x02;
-        /// Truncate the file to zero length upon opening.
-        const TRUNCATE = 0x04;
+impl ReadDir {
+    pub fn open(path: file::Path) -> Result<ReadDir> {
+        let api = get_api();
+        match (api.opendir)(path) {
+            neotron_ffi::FfiResult::Ok(output) => Ok(ReadDir(output)),
+            neotron_ffi::FfiResult::Err(e) => Err(e),
+        }
     }
 }
 
-bitflags! {
-    #[repr(C)]
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    /// The attributes a file on disk can have.alloc
-    ///
-    /// Based on that supported by the FAT32 file system.
-    pub struct FileAttributes: u8 {
-        /// File is read-only
-        const READ_ONLY = 0x01;
-        /// File should not appear in directory listing
-        const HIDDEN = 0x02;
-        /// File should not be moved on disk
-        const SYSTEM = 0x04;
-        /// File is a volume label
-        const VOLUME = 0x08;
-        /// File is a directory
-        const DIRECTORY = 0x10;
-        /// File has not been backed up
-        const ARCHIVE = 0x20;
-        /// File is actually a device
-        const DEVICE = 0x40;
+impl Iterator for ReadDir {
+    type Item = Result<dir::Entry>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        None
     }
 }
 
-/// Represents an instant in time, in the local time zone.
-#[repr(C)]
-#[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq)]
-pub struct FileTime {
-    /// Add 1970 to this file to get the calendar year
-    pub year_since_1970: u8,
-    /// Add one to this value to get the calendar month
-    pub zero_indexed_month: u8,
-    /// Add one to this value to get the calendar day
-    pub zero_indexed_day: u8,
-    /// The number of hours past midnight
-    pub hours: u8,
-    /// The number of minutes past the hour
-    pub minutes: u8,
-    /// The number of seconds past the minute
-    pub seconds: u8,
+impl Drop for ReadDir {
+    fn drop(&mut self) {
+        let api = get_api();
+        let _ = (api.closedir)(self.0);
+    }
 }
 
 // ============================================================================
 // Functions
 // ============================================================================
 
-#[cfg(feature = "application")]
-mod application {
-    use super::*;
-    use core::sync::atomic::{AtomicPtr, Ordering};
-
-    #[link_section = ".entry_point"]
-    #[used]
-    pub static APP_ENTRY: AppStartFn = app_entry;
-
-    static API: AtomicPtr<Api> = AtomicPtr::new(core::ptr::null_mut());
-
-    /// The function the OS calls to start the application.
-    ///
-    /// Will jump to the application entry point, and `extern "C"` function
-    /// called `main`.
-    extern "C" fn app_entry(api: *mut crate::Api) -> i32 {
-        API.store(api as *mut Api, Ordering::Relaxed);
-        unsafe { main() }
-    }
-
-    /// Write to a file handle.
-    pub fn write(fd: FileHandle, data: &[u8]) -> Result<()> {
-        let api = get_api();
-        (api.write)(fd, FfiByteSlice::new(data))
-    }
-
-    /// Get the API structure so you can call APIs manually.
-    fn get_api() -> &'static Api {
-        let ptr = API.load(Ordering::Relaxed);
-        unsafe { ptr.as_ref().unwrap() }
-    }
+/// The function the OS calls to start the application.
+///
+/// Will jump to the application entry point, and `extern "C"` function
+/// called `main`.
+extern "C" fn app_entry(api: *mut Api) -> i32 {
+    API.store(api, Ordering::Relaxed);
+    unsafe { neotron_main() }
 }
 
-#[cfg(feature = "application")]
-pub use application::*;
+/// Get information about a file on disk.
+pub fn stat(_path: file::Path) -> Result<file::Stat> {
+    todo!()
+}
+
+/// Delete a file from disk
+pub fn delete(_path: file::Path) -> Result<()> {
+    todo!()
+}
+
+/// Change the current working directory to the given path.
+pub fn chdir(_path: file::Path) -> Result<()> {
+    todo!()
+}
+
+/// Change the current working directory to that given by the handle.
+pub fn dchdir(_dir: dir::Handle) -> Result<()> {
+    todo!()
+}
+
+/// Get the current working directory.
+///
+/// Provided as a call-back, so the caller doesn't need to allocate storage space for the string.
+pub fn pwd<F: FnOnce(Result<file::Path>)>(callback: F) {
+    callback(Err(Error::FileNotFound))
+}
+
+/// Alllocate some memory
+pub fn malloc(_size: usize, _alignment: usize) -> Result<*mut core::ffi::c_void> {
+    todo!()
+}
+
+/// Free some previously allocated memory.
+pub fn free(_ptr: *mut core::ffi::c_void, _size: usize, _alignment: usize) {
+    todo!()
+}
+
+/// Get the API structure so we can call APIs manually.
+///
+/// If you managed to not have `app_entry` called on start-up, this will panic.
+fn get_api() -> &'static Api {
+    let ptr = API.load(Ordering::Relaxed);
+    unsafe { ptr.as_ref().unwrap() }
+}
 
 // ============================================================================
 // End of File

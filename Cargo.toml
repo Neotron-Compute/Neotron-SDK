@@ -9,6 +9,7 @@ authors = ["Jonathan 'theJPster' Pallant <neotron@thejpster.org.uk>"]
 [dependencies]
 bitflags = "2"
 neotron-ffi = "0.1"
+neotron-api = { git = "https://github.com/neotron-compute/neotron-api.git", branch = "seek-updates" }
 
 [features]
 # Enables functions the OS needs but an application does not
