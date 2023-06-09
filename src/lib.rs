@@ -12,7 +12,9 @@ use core::sync::atomic::{AtomicPtr, Ordering};
 
 pub use neotron_ffi::{FfiBuffer, FfiByteSlice, FfiString};
 
-pub use neotron_api::{dir, file, Api, Error};
+pub use neotron_api::{path, Api, Error};
+
+use neotron_api as api;
 
 // ============================================================================
 // Constants
@@ -58,7 +60,7 @@ pub type AppStartFn = extern "C" fn(*mut crate::Api) -> i32;
 pub type Result<T> = core::result::Result<T, Error>;
 
 /// Represents an open File
-pub struct File(file::Handle);
+pub struct File(api::file::Handle);
 
 impl File {
     /// Open a file, given a path as UTF-8 string.
@@ -73,9 +75,9 @@ impl File {
     /// * You cannot open a file if it is currently open.
     /// * Paths must confirm to the rules for the filesystem for the given drive.
     /// * Relative paths are taken relative to the current directory (see `Api::chdir`).
-    pub fn open(path: file::Path, flags: file::Flags) -> Result<Self> {
+    pub fn open(path: path::Path, flags: api::file::Flags) -> Result<Self> {
         let api = get_api();
-        match (api.open)(path, flags) {
+        match (api.open)(FfiString::new(path.as_str()), flags) {
             neotron_ffi::FfiResult::Ok(handle) => Ok(File(handle)),
             neotron_ffi::FfiResult::Err(e) => Err(e),
         }
@@ -166,9 +168,12 @@ impl File {
     /// * You cannot rename a file where the `old_path` and the `new_path` are
     /// not on the same drive.
     /// * Paths must confirm to the rules for the filesystem for the given drive.
-    pub fn rename(old_path: file::Path, new_path: file::Path) -> Result<()> {
+    pub fn rename(old_path: path::Path, new_path: path::Path) -> Result<()> {
         let api = get_api();
-        match (api.rename)(old_path, new_path) {
+        match (api.rename)(
+            FfiString::new(old_path.as_str()),
+            FfiString::new(new_path.as_str()),
+        ) {
             neotron_ffi::FfiResult::Ok(_) => Ok(()),
             neotron_ffi::FfiResult::Err(e) => Err(e),
         }
@@ -186,7 +191,7 @@ impl File {
     }
 
     /// Get information about this file.
-    pub fn stat(&self) -> Result<file::Stat> {
+    pub fn stat(&self) -> Result<api::file::Stat> {
         let api = get_api();
         match (api.fstat)(self.0) {
             neotron_ffi::FfiResult::Ok(output) => Ok(output),
@@ -205,12 +210,12 @@ impl core::ops::Drop for File {
 }
 
 /// Represents an open directory that we are iterating through.
-pub struct ReadDir(dir::Handle);
+pub struct ReadDir(api::dir::Handle);
 
 impl ReadDir {
-    pub fn open(path: file::Path) -> Result<ReadDir> {
+    pub fn open(path: path::Path) -> Result<ReadDir> {
         let api = get_api();
-        match (api.opendir)(path) {
+        match (api.opendir)(FfiString::new(path.as_str())) {
             neotron_ffi::FfiResult::Ok(output) => Ok(ReadDir(output)),
             neotron_ffi::FfiResult::Err(e) => Err(e),
         }
@@ -218,7 +223,7 @@ impl ReadDir {
 }
 
 impl Iterator for ReadDir {
-    type Item = Result<dir::Entry>;
+    type Item = Result<api::dir::Entry>;
 
     fn next(&mut self) -> Option<Self::Item> {
         None
@@ -246,30 +251,30 @@ extern "C" fn app_entry(api: *mut Api) -> i32 {
 }
 
 /// Get information about a file on disk.
-pub fn stat(_path: file::Path) -> Result<file::Stat> {
+pub fn stat(_path: path::Path) -> Result<api::file::Stat> {
     todo!()
 }
 
 /// Delete a file from disk
-pub fn delete(_path: file::Path) -> Result<()> {
+pub fn delete(_path: path::Path) -> Result<()> {
     todo!()
 }
 
 /// Change the current working directory to the given path.
-pub fn chdir(_path: file::Path) -> Result<()> {
+pub fn chdir(_path: path::Path) -> Result<()> {
     todo!()
 }
 
 /// Change the current working directory to that given by the handle.
-pub fn dchdir(_dir: dir::Handle) -> Result<()> {
+pub fn dchdir(_dir: api::dir::Handle) -> Result<()> {
     todo!()
 }
 
 /// Get the current working directory.
 ///
 /// Provided as a call-back, so the caller doesn't need to allocate storage space for the string.
-pub fn pwd<F: FnOnce(Result<file::Path>)>(callback: F) {
-    callback(Err(Error::FileNotFound))
+pub fn pwd<F: FnOnce(Result<path::Path>)>(callback: F) {
+    callback(Err(Error::NotFound))
 }
 
 /// Alllocate some memory
@@ -284,17 +289,17 @@ pub fn free(_ptr: *mut core::ffi::c_void, _size: usize, _alignment: usize) {
 
 /// Get a handle for Standard Input
 pub fn stdin() -> File {
-    File(file::Handle::new_stdin())
+    File(api::file::Handle::new_stdin())
 }
 
 /// Get a handle for Standard Output
 pub fn stdout() -> File {
-    File(file::Handle::new_stdout())
+    File(api::file::Handle::new_stdout())
 }
 
 /// Get a handle for Standard Error
 pub fn stderr() -> File {
-    File(file::Handle::new_stderr())
+    File(api::file::Handle::new_stderr())
 }
 
 /// Get the API structure so we can call APIs manually.
