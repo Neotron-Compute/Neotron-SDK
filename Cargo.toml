@@ -1,0 +1,18 @@
+[package]
+description = "SDK for writing applications for Neotron OS"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+name = "neotron-sdk"
+version = "0.1.0"
+authors = ["Jonathan 'theJPster' Pallant <neotron@thejpster.org.uk>"]
+
+[dependencies]
+bitflags = "2"
+neotron-ffi = "0.1"
+neotron-api = "0.1"
+
+[features]
+# Enables functions the OS needs but an application does not
+os = []
+# Enables functions an application needs but the OS does not
+application = []
