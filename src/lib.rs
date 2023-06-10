@@ -322,7 +322,7 @@ fn get_api() -> &'static Api {
     unsafe { ptr.as_ref().unwrap() }
 }
 
-#[cfg(feature = "fancy-panic")]
+#[cfg(all(feature = "fancy-panic", not(test)))]
 #[inline(never)]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
@@ -332,7 +332,7 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
-#[cfg(not(feature = "fancy-panic"))]
+#[cfg(all(not(feature = "fancy-panic"), not(test)))]
 #[inline(never)]
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
