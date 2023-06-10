@@ -12,7 +12,5 @@ neotron-ffi = "0.1"
 neotron-api = "0.1"
 
 [features]
-# Enables functions the OS needs but an application does not
-os = []
-# Enables functions an application needs but the OS does not
-application = []
+# Prints panic info. Costs you about 14K of code.
+fancy-panic = []

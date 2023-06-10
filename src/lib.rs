@@ -209,6 +209,18 @@ impl core::ops::Drop for File {
     }
 }
 
+impl core::fmt::Write for File {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        self.write(s.as_bytes()).map_err(|_| core::fmt::Error)
+    }
+}
+
+impl core::fmt::Write for &File {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        self.write(s.as_bytes()).map_err(|_| core::fmt::Error)
+    }
+}
+
 /// Represents an open directory that we are iterating through.
 pub struct ReadDir(api::dir::Handle);
 
@@ -308,6 +320,26 @@ pub fn stderr() -> File {
 fn get_api() -> &'static Api {
     let ptr = API.load(Ordering::Relaxed);
     unsafe { ptr.as_ref().unwrap() }
+}
+
+#[cfg(feature = "fancy-panic")]
+#[inline(never)]
+#[panic_handler]
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    use core::fmt::Write;
+    let stdout = stdout();
+    let _ = writeln!(&stdout, "Panic:\n{:#?}", info);
+    loop {}
+}
+
+#[cfg(not(feature = "fancy-panic"))]
+#[inline(never)]
+#[panic_handler]
+fn panic(_info: &core::panic::PanicInfo) -> ! {
+    use core::fmt::Write;
+    let stdout = stdout();
+    let _ = writeln!(&stdout, "Panic!");
+    loop {}
 }
 
 // ============================================================================

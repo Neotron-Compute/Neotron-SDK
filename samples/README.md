@@ -8,7 +8,7 @@ Build the application as follows:
 
 ```console
 $ cargo build --release --target=thumbv6m-none-eabi
-$ cargo objcopy --release --target=thumbv6m-none-eabi --  -O binary hello.bin
+$ rust-objcopy -O binary ./target/thumbv6m-none-eabi/release/hello hello.bin
 ```
 
 Then copy the resulting `hello.bin` file to an SD card and insert it into your Neotron system. You can load the application with something like:
@@ -18,10 +18,10 @@ Then copy the resulting `hello.bin` file to an SD card and insert it into your N
 > run
 ```
 
-If you don't have `cargo-binutils` installed (which adds the `objcopy` sub-command), install it with:
+If you don't have `rust-objcopy` installed, install it with:
 
 ```console
-$ cargo install cargo-binutils
+$ rustup component add llvm-tools
 ```
 
 ## List of Sample Applications
@@ -30,3 +30,10 @@ $ cargo install cargo-binutils
 
 This is a basic "Hello World" application. It prints the string "Hello, world" to *standard output* and then exits with an exit code of 0.
 
+## [`panic`](./panic)
+
+This application panics, printing a nice panic message.
+
+## [`fault`](./fault)
+
+This application generates a Hard Fault.
