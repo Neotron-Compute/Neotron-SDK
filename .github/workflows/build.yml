@@ -18,6 +18,10 @@ jobs:
       - name: Add targets
         run: |
           rustup target add thumbv6m-none-eabi
+          rustup target add thumbv7m-none-eabi
+          rustup target add thumbv7em-none-eabi
+          rustup component add llvm-tools
+          cargo install cargo-binutils
 
       - name: Build lib (native)
         run: |
@@ -27,10 +31,14 @@ jobs:
         run: |
           cargo test --verbose
 
-      - name: Build lib (Cortex-M0), OS mode
-        run: |
-          cargo build --verbose --target=thumbv6m-none-eabi --features=os
-
       - name: Build samples (Cortex-M0)
         run: |
-          cd samples && cargo build --verbose --target=thumbv6m-none-eabi
+          cd samples && ./build.sh thumbv6m-none-eabi
+
+      - name: Build samples (Cortex-M3)
+        run: |
+          cd samples && ./build.sh thumbv7m-none-eabi
+
+      - name: Build samples (Cortex-M4)
+        run: |
+          cd samples && ./build.sh thumbv7em-none-eabi
