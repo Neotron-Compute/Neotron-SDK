@@ -20,6 +20,7 @@ jobs:
           rustup target add thumbv6m-none-eabi
           rustup target add thumbv7m-none-eabi
           rustup target add thumbv7em-none-eabi
+          rustup component add llvm-tools
           cargo install cargo-binutils
 
       - name: Build lib (native)
