@@ -10,7 +10,5 @@ Cargo.lock
 **/*.rs.bk
 
 
-# Added by cargo
+samples/*.elf
 
-/target
-/Cargo.lock
