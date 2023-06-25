@@ -36,10 +36,6 @@ extern "C" {
 // Static Variables
 // ============================================================================
 
-#[link_section = ".entry_point"]
-#[used]
-pub static APP_ENTRY: AppStartFn = app_entry;
-
 /// Holds a pointer to the OS API provided by the OS on start-up.
 ///
 /// Once you've hit the application `main()`, this will be non-null.
@@ -257,6 +253,7 @@ impl Drop for ReadDir {
 ///
 /// Will jump to the application entry point, and `extern "C"` function
 /// called `main`.
+#[no_mangle]
 extern "C" fn app_entry(api: *mut Api) -> i32 {
     API.store(api, Ordering::Relaxed);
     unsafe { neotron_main() }

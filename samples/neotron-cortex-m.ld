@@ -25,31 +25,19 @@ ENTRY(app_entry);
 /* # Sections */
 SECTIONS
 {
-
-  /* ### .entry_point */
-  .entry_point ORIGIN(RAM) :
-  {
-      KEEP(*(.entry_point))
-  } > RAM
-
-  PROVIDE(_stext = ADDR(.entry_point) + SIZEOF(.entry_point));
-
   /* ### .text */
-  .text _stext :
+  .text : ALIGN(4)
   {
+    . = ALIGN(4);
     *(.text .text.*);
-    *(.HardFaultTrampoline);
-    *(.HardFault.*);
+    . = ALIGN(4);
   }
 
   /* ### .rodata */
   .rodata : ALIGN(4)
   {
+    . = ALIGN(4);
     *(.rodata .rodata.*);
-
-    /* 4-byte align the end (VMA) of this section.
-       This is required by LLD to ensure the LMA of the following .data
-       section will have the correct alignment. */
     . = ALIGN(4);
   }
 
@@ -57,10 +45,8 @@ SECTIONS
   .data : ALIGN(4)
   {
     . = ALIGN(4);
-    __sdata = .;
     *(.data .data.*);
-    . = ALIGN(4); /* 4-byte align the end (VMA) of this section */
-    __edata = .;
+    . = ALIGN(4);
   }
 
   /* LMA of .data */
@@ -70,10 +56,8 @@ SECTIONS
   .bss : ALIGN(4)
   {
     . = ALIGN(4);
-    __sbss = .;
     *(.bss .bss.*);
-    . = ALIGN(4); /* 4-byte align the end (VMA) of this section */
-    __ebss = .;
+    . = ALIGN(4);
   }
 
   /* ### .uninit */
@@ -83,10 +67,6 @@ SECTIONS
     *(.uninit .uninit.*);
     . = ALIGN(4);
   }
-
-  /* Place the heap right after `.uninit` */
-  . = ALIGN(4);
-  __sheap = .;
 
   /* ## .got */
   /* Dynamic relocations are unsupported. This section is only used to detect relocatable code in
