@@ -1,0 +1,11 @@
+[workspace]
+members = [
+    "fault",
+    "hello",
+    "input-test",
+    "panic",
+]
+
+[profile.release]
+opt-level = "z"
+lto = "fat"

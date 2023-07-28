@@ -8,7 +8,7 @@
 #
 # ```console
 # $ ./build.sh thumbv7em-none-eabi
-# $ ls *.elf
+# $ ls ./release/*.elf
 # ```
 #
 
@@ -18,8 +18,12 @@ TARGET=${1:-thumbv6m-none-eabi}
 
 mkdir -p ./release
 
+echo "Building for host"
+cargo build
+
 echo "Building for ${TARGET}"
-for program in panic hello fault input-test; do
-    ( cd ${program} && cargo build --target=${TARGET} --release )
-    cp ./${program}/target/${TARGET}/release/${program} ./release/${program}.elf
+cargo build --target ${TARGET} --release
+
+for program in panic hello fault input-test snake; do
+    cp ./target/${TARGET}/release/${program} ./release/${program}.elf
 done

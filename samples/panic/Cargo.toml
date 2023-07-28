@@ -9,10 +9,4 @@ description = "Hello World for Neotron systems"
 [dependencies]
 neotron-sdk = { path = "../..", features = ["fancy-panic"] }
 
-[profile.dev]
-panic = "abort"
-
-[profile.release]
-panic = "unwind"
-opt-level = "z"
-lto = "fat"
+# See workspace for profile settings

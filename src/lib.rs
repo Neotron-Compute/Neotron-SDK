@@ -2,7 +2,7 @@
 //!
 //! Defines the API supplied to applications that run on Neotron OS
 
-#![no_std]
+#![cfg_attr(target_os = "none", no_std)]
 
 // ============================================================================
 // Imports
@@ -15,6 +15,9 @@ pub use neotron_ffi::{FfiBuffer, FfiByteSlice, FfiString};
 pub use neotron_api::{path, Api, Error};
 
 use neotron_api as api;
+
+#[cfg(not(target_os = "none"))]
+mod fake_os_api;
 
 // ============================================================================
 // Constants
@@ -319,7 +322,16 @@ fn get_api() -> &'static Api {
     unsafe { ptr.as_ref().unwrap() }
 }
 
-#[cfg(all(feature = "fancy-panic", not(test)))]
+#[cfg(not(target_os = "none"))]
+pub fn init() {
+    API.store(fake_os_api::get_ptr() as *mut Api, Ordering::Relaxed);
+    crossterm::terminal::enable_raw_mode().expect("enable raw mode");
+    let res = unsafe { neotron_main() };
+    crossterm::terminal::disable_raw_mode().expect("disable raw mode");
+    std::process::exit(res);
+}
+
+#[cfg(all(target_os = "none", feature = "fancy-panic"))]
 #[inline(never)]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
@@ -329,7 +341,7 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
-#[cfg(all(not(feature = "fancy-panic"), not(test)))]
+#[cfg(all(target_os = "none", not(feature = "fancy-panic")))]
 #[inline(never)]
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {

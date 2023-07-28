@@ -1,5 +1,10 @@
-#![no_std]
-#![no_main]
+#![cfg_attr(target_os = "none", no_std)]
+#![cfg_attr(target_os = "none", no_main)]
+
+#[cfg(not(target_os = "none"))]
+fn main() {
+    neotron_sdk::init();
+}
 
 use core::fmt::Write;
 
