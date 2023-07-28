@@ -3,6 +3,12 @@
 //! Allows Neotron SDK applications to run using libstd instead of Neotron OS
 
 use std::io::Write;
+use std::sync::{
+    mpsc::{channel, Receiver},
+    Mutex,
+};
+
+static STDIN_RX: Mutex<Option<Receiver<u8>>> = Mutex::new(None);
 
 static FAKE_API: neotron_api::Api = neotron_api::Api {
     open: api_open,
@@ -30,6 +36,20 @@ static FAKE_API: neotron_api::Api = neotron_api::Api {
 
 /// Get an Api pointer that uses libstd.
 pub fn get_ptr() -> *const neotron_api::Api {
+    let (sender, receiver) = channel();
+    *STDIN_RX.lock().unwrap() = Some(receiver);
+
+    std::thread::spawn(move || {
+        use std::io::prelude::*;
+        let mut stdin = std::io::stdin();
+        loop {
+            let mut buffer = [0u8; 1];
+            if let Ok(1) = stdin.read(&mut buffer) {
+                sender.send(buffer[0]).unwrap();
+            }
+        }
+    });
+
     &FAKE_API as *const neotron_api::Api
 }
 
@@ -70,6 +90,7 @@ extern "C" fn api_write(
                 stdout.write_all(chunk).unwrap();
             }
         }
+        stdout.flush().unwrap();
         neotron_api::Result::Ok(())
     } else {
         neotron_api::Result::Err(neotron_api::Error::BadHandle)
@@ -84,13 +105,12 @@ extern "C" fn api_read(
     mut buffer: neotron_api::FfiBuffer,
 ) -> neotron_api::Result<usize> {
     if fd == neotron_api::file::Handle::new_stdin() {
-        use std::io::Read;
-        let mut stdin = std::io::stdin();
-        let Some(mut buffer_slice) = buffer.as_mut_slice() else {
-            return neotron_api::Result::Err(neotron_api::Error::InvalidArg);
-        };
-        let count = stdin.read(&mut buffer_slice).expect("stdin read");
-        neotron_api::Result::Ok(count)
+        if let Some(b) = STDIN_RX.lock().unwrap().as_mut().unwrap().try_recv().ok() {
+            buffer.as_mut_slice().unwrap()[0] = b;
+            neotron_api::Result::Ok(1)
+        } else {
+            neotron_api::Result::Ok(0)
+        }
     } else {
         neotron_api::Result::Err(neotron_api::Error::BadHandle)
     }

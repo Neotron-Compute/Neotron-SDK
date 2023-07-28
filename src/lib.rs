@@ -300,18 +300,31 @@ pub fn free(_ptr: *mut core::ffi::c_void, _size: usize, _alignment: usize) {
 }
 
 /// Get a handle for Standard Input
-pub fn stdin() -> File {
+pub const fn stdin() -> File {
     File(api::file::Handle::new_stdin())
 }
 
 /// Get a handle for Standard Output
-pub fn stdout() -> File {
+pub const fn stdout() -> File {
     File(api::file::Handle::new_stdout())
 }
 
 /// Get a handle for Standard Error
-pub fn stderr() -> File {
+pub const fn stderr() -> File {
     File(api::file::Handle::new_stderr())
+}
+
+/// Delay for some milliseconds
+pub fn delay(period: core::time::Duration) {
+    #[cfg(not(target_os = "none"))]
+    std::thread::sleep(period);
+
+    // TODO: sleep on real hardware?
+    for _ in 0..period.as_micros() {
+        for _ in 0..50 {
+            unsafe { core::arch::asm!("nop") }
+        }
+    }
 }
 
 /// Get the API structure so we can call APIs manually.
