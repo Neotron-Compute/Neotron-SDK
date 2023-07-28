@@ -4,6 +4,7 @@
         "./samples/panic/Cargo.toml",
         "./samples/hello/Cargo.toml",
         "./samples/fault/Cargo.toml",
+        "./samples/snake/Cargo.toml",
         "./Cargo.toml"
     ]
 }

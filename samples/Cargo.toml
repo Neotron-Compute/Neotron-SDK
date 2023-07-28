@@ -3,6 +3,7 @@ members = [
     "fault",
     "hello",
     "input-test",
+    "snake",
     "panic",
 ]
 
