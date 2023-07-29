@@ -1,7 +1,10 @@
-#![no_std]
-#![no_main]
+#![cfg_attr(target_os = "none", no_std)]
+#![cfg_attr(target_os = "none", no_main)]
 
-extern crate neotron_sdk;
+#[cfg(not(target_os = "none"))]
+fn main() {
+    neotron_sdk::init();
+}
 
 use core::fmt::Write;
 

@@ -6,12 +6,10 @@ fn main() {
     neotron_sdk::init();
 }
 
+static mut APP: snake::App = snake::App::new(80, 25);
+
 #[no_mangle]
 extern "C" fn neotron_main() -> i32 {
-    let stdout = neotron_sdk::stdout();
-    if stdout.write(b"Hello, world\n").is_ok() {
-        0
-    } else {
-        1
-    }
+    unsafe { APP.play() }
+    0
 }

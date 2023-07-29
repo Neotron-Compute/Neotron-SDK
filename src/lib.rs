@@ -2,7 +2,7 @@
 //!
 //! Defines the API supplied to applications that run on Neotron OS
 
-#![no_std]
+#![cfg_attr(target_os = "none", no_std)]
 
 // ============================================================================
 // Imports
@@ -15,6 +15,11 @@ pub use neotron_ffi::{FfiBuffer, FfiByteSlice, FfiString};
 pub use neotron_api::{path, Api, Error};
 
 use neotron_api as api;
+
+pub mod console;
+
+#[cfg(not(target_os = "none"))]
+mod fake_os_api;
 
 // ============================================================================
 // Constants
@@ -297,18 +302,51 @@ pub fn free(_ptr: *mut core::ffi::c_void, _size: usize, _alignment: usize) {
 }
 
 /// Get a handle for Standard Input
-pub fn stdin() -> File {
+pub const fn stdin() -> File {
     File(api::file::Handle::new_stdin())
 }
 
 /// Get a handle for Standard Output
-pub fn stdout() -> File {
+pub const fn stdout() -> File {
     File(api::file::Handle::new_stdout())
 }
 
 /// Get a handle for Standard Error
-pub fn stderr() -> File {
+pub const fn stderr() -> File {
     File(api::file::Handle::new_stderr())
+}
+
+/// Delay for some milliseconds
+#[cfg(target_os = "none")]
+pub fn delay(period: core::time::Duration) {
+    // TODO: sleep on real hardware?
+    for _ in 0..period.as_micros() {
+        for _ in 0..50 {
+            unsafe { core::arch::asm!("nop") }
+        }
+    }
+}
+
+/// Delay for some milliseconds
+#[cfg(not(target_os = "none"))]
+pub fn delay(period: core::time::Duration) {
+    std::thread::sleep(period);
+}
+
+static RAND_STATE: core::sync::atomic::AtomicU16 = core::sync::atomic::AtomicU16::new(0);
+
+/// Seed the 16-bit psuedorandom number generator
+pub fn srand(seed: u16) {
+    RAND_STATE.store(seed, core::sync::atomic::Ordering::Relaxed);
+}
+
+/// Get a 16-bit psuedorandom number
+pub fn rand() -> u16 {
+    let mut state = RAND_STATE.load(core::sync::atomic::Ordering::Relaxed);
+    let bit = (state ^ (state >> 2) ^ (state >> 3) ^ (state >> 5)) & 0x01;
+    state = (state >> 1) | (bit << 15);
+    RAND_STATE.store(state, core::sync::atomic::Ordering::Relaxed);
+    state
 }
 
 /// Get the API structure so we can call APIs manually.
@@ -319,7 +357,16 @@ fn get_api() -> &'static Api {
     unsafe { ptr.as_ref().unwrap() }
 }
 
-#[cfg(all(feature = "fancy-panic", not(test)))]
+#[cfg(not(target_os = "none"))]
+pub fn init() {
+    API.store(fake_os_api::get_ptr() as *mut Api, Ordering::Relaxed);
+    crossterm::terminal::enable_raw_mode().expect("enable raw mode");
+    let res = unsafe { neotron_main() };
+    crossterm::terminal::disable_raw_mode().expect("disable raw mode");
+    std::process::exit(res);
+}
+
+#[cfg(all(target_os = "none", feature = "fancy-panic"))]
 #[inline(never)]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
@@ -329,7 +376,7 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
-#[cfg(all(not(feature = "fancy-panic"), not(test)))]
+#[cfg(all(target_os = "none", not(feature = "fancy-panic")))]
 #[inline(never)]
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
