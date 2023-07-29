@@ -4,6 +4,8 @@
 
 use core::fmt::Write;
 
+use neotron_sdk::console;
+
 #[derive(Debug)]
 pub enum Error {
     ScreenTooTall,
@@ -12,16 +14,16 @@ pub enum Error {
 
 pub struct App {
     game: Game,
-    width: usize,
-    height: usize,
+    width: u8,
+    height: u8,
     stdout: neotron_sdk::File,
     stdin: neotron_sdk::File,
 }
 
 impl App {
-    pub const fn new(width: usize, height: usize) -> App {
+    pub const fn new(width: u8, height: u8) -> App {
         App {
-            game: Game::new(width - 2, height - 2, 1, 1),
+            game: Game::new(width - 2, height - 2, console::Position { row: 1, col: 1 }),
             width,
             height,
             stdout: neotron_sdk::stdout(),
@@ -30,8 +32,7 @@ impl App {
     }
 
     pub fn play(&mut self) -> Result<(), Error> {
-        // hide cursor
-        let _ = writeln!(self.stdout, "\u{001b}[?25l");
+        console::cursor_off(&mut self.stdout);
         self.clear_screen();
         self.title_screen();
 
@@ -51,46 +52,68 @@ impl App {
 
             self.clear_screen();
 
-            let score = self.game.play(seed, &mut self.stdin, &mut self.stdout);
+            neotron_sdk::srand(seed);
+
+            let score = self.game.play(&mut self.stdin, &mut self.stdout);
 
             self.winning_message(score);
         }
 
         // show cursor
-        let _ = writeln!(self.stdout, "\u{001b}[?25h");
+        console::cursor_on(&mut self.stdout);
         self.clear_screen();
         Ok(())
     }
 
     fn clear_screen(&mut self) {
-        let _ = self.stdout.write_str("\u{001b}[2J");
-        for x in 1..=self.width {
-            let _ = write!(self.stdout, "\u{001b}[{};{}H{}", 1, x, '-');
-            let _ = write!(self.stdout, "\u{001b}[{};{}H{}", self.height, x, '-');
+        console::clear_screen(&mut self.stdout);
+        console::move_cursor(&mut self.stdout, console::Position::origin());
+        let _ = self.stdout.write_char('+');
+        for _ in 1..self.width - 1 {
+            let _ = self.stdout.write_char('-');
         }
-        for y in 1..=self.height {
-            let _ = write!(self.stdout, "\u{001b}[{};{}H{}", y, 1, '|');
-            let _ = write!(self.stdout, "\u{001b}[{};{}H{}", y, self.width, '|');
+        let _ = self.stdout.write_char('+');
+        console::move_cursor(
+            &mut self.stdout,
+            console::Position {
+                row: self.height - 1,
+                col: 0,
+            },
+        );
+        let _ = self.stdout.write_char('+');
+        for _ in 1..self.width - 1 {
+            let _ = self.stdout.write_char('-');
+        }
+        let _ = self.stdout.write_char('+');
+        for row in 1..self.height - 1 {
+            console::move_cursor(&mut self.stdout, console::Position { row, col: 0 });
+            let _ = self.stdout.write_char('|');
+            console::move_cursor(
+                &mut self.stdout,
+                console::Position {
+                    row,
+                    col: self.width - 1,
+                },
+            );
+            let _ = self.stdout.write_char('|');
         }
     }
 
     fn title_screen(&mut self) {
         let message = "ANSI Snake";
-        let centre_x = (self.width - message.chars().count()) / 2;
-        let centre_y = self.height / 2;
-        let _ = writeln!(
-            self.stdout,
-            "\u{001b}[{};{}H{}",
-            centre_y, centre_x, message
-        );
+        let pos = console::Position {
+            row: self.height / 2,
+            col: (self.width - message.chars().count() as u8) / 2,
+        };
+        console::move_cursor(&mut self.stdout, pos);
+        let _ = self.stdout.write_str(message);
         let message = "Q to Quit | 'P' to Play";
-        let centre_x = (self.width - message.chars().count()) / 2;
-        let centre_y = (self.height / 2) + 1;
-        let _ = writeln!(
-            self.stdout,
-            "\u{001b}[{};{}H{}",
-            centre_y, centre_x, message
-        );
+        let pos = console::Position {
+            row: pos.row + 1,
+            col: (self.width - message.chars().count() as u8) / 2,
+        };
+        console::move_cursor(&mut self.stdout, pos);
+        let _ = self.stdout.write_str(message);
     }
 
     fn wait_for_key(&mut self) -> u8 {
@@ -104,99 +127,77 @@ impl App {
     }
 
     fn winning_message(&mut self, score: u32) {
-        let centre_x = (self.width - 13) / 2;
-        let mut centre_y = self.height / 2;
-        let _ = writeln!(
-            self.stdout,
-            "\u{001b}[{};{}HScore: {:06}",
-            centre_y, centre_x, score
-        );
+        let pos = console::Position {
+            row: self.height / 2,
+            col: (self.width - 13 as u8) / 2,
+        };
+        console::move_cursor(&mut self.stdout, pos);
+        let _ = writeln!(self.stdout, "Score: {:06}", score);
         let message = "Q to Quit | 'P' to Play";
-        let centre_x = (self.width - message.chars().count()) / 2;
-        centre_y += 1;
-        let _ = writeln!(
-            self.stdout,
-            "\u{001b}[{};{}H{}",
-            centre_y, centre_x, message
-        );
+        let pos = console::Position {
+            row: pos.row + 1,
+            col: (self.width - message.chars().count() as u8) / 2,
+        };
+        console::move_cursor(&mut self.stdout, pos);
+        let _ = self.stdout.write_str(message);
     }
 }
 
 pub struct Game {
     board: Board<{ Self::MAX_WIDTH }, { Self::MAX_HEIGHT }>,
-    width: usize,
-    height: usize,
-    offset_x: usize,
-    offset_y: usize,
-    head_x: usize,
-    head_y: usize,
-    tail_x: usize,
-    tail_y: usize,
+    width: u8,
+    height: u8,
+    offset: console::Position,
+    head: console::Position,
+    tail: console::Position,
     direction: Direction,
-    seed: u16,
     score: u32,
     digesting: u32,
+    tick_interval_ms: u16,
 }
 
 impl Game {
     pub const MAX_WIDTH: usize = 80;
     pub const MAX_HEIGHT: usize = 25;
 
-    const fn new(width: usize, height: usize, offset_x: usize, offset_y: usize) -> Game {
+    const fn new(width: u8, height: u8, offset: console::Position) -> Game {
         Game {
             board: Board::new(),
             width,
             height,
-            offset_x,
-            offset_y,
-            head_x: 0,
-            head_y: 0,
-            tail_x: 0,
-            tail_y: 0,
+            offset,
+            head: console::Position { row: 0, col: 0 },
+            tail: console::Position { row: 0, col: 0 },
             direction: Direction::Up,
-            seed: 0,
             score: 0,
             digesting: 0,
+            tick_interval_ms: 150,
         }
     }
 
-    fn random(&mut self) -> u16 {
-        let lfsr = self.seed;
-        let bit = ((lfsr >> 0) ^ (lfsr >> 2) ^ (lfsr >> 3) ^ (lfsr >> 5)) & 0x01;
-        self.seed = (lfsr >> 1) | (bit << 15);
-        self.seed
-    }
-
-    fn play(
-        &mut self,
-        seed: u16,
-        stdin: &mut neotron_sdk::File,
-        stdout: &mut neotron_sdk::File,
-    ) -> u32 {
+    fn play(&mut self, stdin: &mut neotron_sdk::File, stdout: &mut neotron_sdk::File) -> u32 {
         // Reset score
         self.score = 0;
-        // Init random numbers
-        self.seed = seed;
-        for _ in 0..100 {
-            let _ = self.random();
-        }
         // Wipe board
         self.board.reset();
         // Add offset snake
-        self.head_x = self.width / 4;
-        self.head_y = self.height / 4;
-        self.tail_x = self.head_x;
-        self.tail_y = self.head_y;
-        self.board.set_dir(self.head_x, self.head_y, self.direction);
-        self.write_at(stdout, self.head_x, self.head_y, 'U');
+        self.head = console::Position {
+            row: self.height / 4,
+            col: self.width / 4,
+        };
+        self.tail = self.head;
+        self.board.set_dir(self.head, self.direction);
+        self.write_at(stdout, self.head, 'U');
         // Add random food
-        let (x, y) = self.random_empty_position();
-        self.board.set_food(x, y);
-        self.write_at(stdout, x, y, 'F');
+        let pos = self.random_empty_position();
+        self.board.set_food(pos);
+        self.write_at(stdout, pos, 'F');
 
         'game: loop {
             // Wait for frame tick
-            neotron_sdk::delay(core::time::Duration::from_millis(100));
+            neotron_sdk::delay(core::time::Duration::from_millis(
+                self.tick_interval_ms as u64,
+            ));
 
             // 1 point for not being dead
             self.score += 1;
@@ -244,77 +245,84 @@ impl Game {
             }
 
             // Mark which way we're going in the old head position
-            self.board.set_dir(self.head_x, self.head_y, self.direction);
+            self.board.set_dir(self.head, self.direction);
 
             // Update head position
             match self.direction {
                 Direction::Up => {
-                    if self.head_y == 0 {
+                    if self.head.row == 0 {
                         break 'game;
                     }
-                    self.head_y -= 1;
+                    self.head.row -= 1;
                 }
                 Direction::Down => {
-                    if self.head_y == self.height - 1 {
+                    if self.head.row == self.height - 1 {
                         break 'game;
                     }
-                    self.head_y += 1;
+                    self.head.row += 1;
                 }
                 Direction::Left => {
-                    if self.head_x == 0 {
+                    if self.head.col == 0 {
                         break 'game;
                     }
-                    self.head_x -= 1;
+                    self.head.col -= 1;
                 }
                 Direction::Right => {
-                    if self.head_x == self.width - 1 {
+                    if self.head.col == self.width - 1 {
                         break 'game;
                     }
-                    self.head_x += 1;
+                    self.head.col += 1;
                 }
             }
 
             // Check what we just ate
             //   - Food => get longer
             //   - Ourselves => die
-            if self.board.is_food(self.head_x, self.head_y) {
+            if self.board.is_food(self.head) {
                 // yum
                 self.score += 10;
                 self.digesting = 2;
+                // Drop 10% on the tick interval
+                self.tick_interval_ms *= 9;
+                self.tick_interval_ms /= 10;
+                if self.tick_interval_ms < 5 {
+                    // Maximum speed
+                    self.tick_interval_ms = 5;
+                }
                 // Add random food
-                let (x, y) = self.random_empty_position();
-                self.board.set_food(x, y);
-                self.write_at(stdout, x, y, 'F');
-            } else if self.board.is_body(self.head_x, self.head_y) {
+                let pos = self.random_empty_position();
+                self.board.set_food(pos);
+                self.write_at(stdout, pos, 'F');
+            } else if self.board.is_body(self.head) {
                 // oh no
                 break 'game;
             }
 
             // Write the new head
-            self.board.set_dir(self.head_x, self.head_y, self.direction);
-            self.write_at(stdout, self.head_x, self.head_y, 'U');
+            self.board.set_dir(self.head, self.direction);
+            self.write_at(stdout, self.head, 'U');
 
             if self.digesting == 0 {
-                let (old_tail_x, old_tail_y) = (self.tail_x, self.tail_y);
-                match self.board.get_tail_dir(self.tail_x, self.tail_y) {
+                let old_tail = self.tail;
+                match self.board.get_tail_dir(self.tail) {
                     Some(Direction::Up) => {
-                        self.tail_y -= 1;
+                        self.tail.row -= 1;
                     }
                     Some(Direction::Down) => {
-                        self.tail_y += 1;
+                        self.tail.row += 1;
                     }
                     Some(Direction::Left) => {
-                        self.tail_x -= 1;
+                        self.tail.col -= 1;
                     }
                     Some(Direction::Right) => {
-                        self.tail_x += 1;
+                        self.tail.col += 1;
                     }
                     None => {
                         panic!("Bad game state");
                     }
                 }
-                self.board.clear(old_tail_x, old_tail_y);
-                self.write_at(stdout, old_tail_x, old_tail_y, ' ');
+                self.board.clear(old_tail);
+                self.write_at(stdout, old_tail, ' ');
             } else {
                 self.digesting -= 1;
             }
@@ -323,23 +331,24 @@ impl Game {
         self.score
     }
 
-    fn write_at(&self, console: &mut neotron_sdk::File, x: usize, y: usize, ch: char) {
-        let _ = write!(
-            console,
-            "\u{001b}[{};{}H{}",
-            self.offset_y + y + 1,
-            self.offset_x + x + 1,
-            ch
-        );
+    fn write_at(&self, console: &mut neotron_sdk::File, position: console::Position, ch: char) {
+        let adjusted_position = console::Position {
+            row: position.row + self.offset.row,
+            col: position.col + self.offset.col,
+        };
+        console::move_cursor(console, adjusted_position);
+        let _ = console.write_char(ch);
     }
 
-    fn random_empty_position(&mut self) -> (usize, usize) {
+    fn random_empty_position(&mut self) -> console::Position {
         loop {
             // This isn't equally distributed. I don't really care.
-            let x = (self.random() as usize) % self.width;
-            let y = (self.random() as usize) % self.height;
-            if self.board.is_empty(x, y) {
-                return (x, y);
+            let pos = console::Position {
+                row: (neotron_sdk::rand() % self.height as u16) as u8,
+                col: (neotron_sdk::rand() % self.width as u16) as u8,
+            };
+            if self.board.is_empty(pos) {
+                return pos;
             }
         }
     }
@@ -363,68 +372,76 @@ impl Direction {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[repr(u8)]
+enum CellContents {
+    Empty,
+    Up,
+    Down,
+    Left,
+    Right,
+    Food,
+}
+
 struct Board<const WIDTH: usize, const HEIGHT: usize> {
-    cells: [[u8; WIDTH]; HEIGHT],
+    cells: [[CellContents; WIDTH]; HEIGHT],
 }
 
 impl<const WIDTH: usize, const HEIGHT: usize> Board<WIDTH, HEIGHT> {
-    const UP: u8 = b'U';
-    const DOWN: u8 = b'D';
-    const LEFT: u8 = b'L';
-    const RIGHT: u8 = b'R';
-    const FOOD: u8 = b'F';
-
     const fn new() -> Board<WIDTH, HEIGHT> {
         Board {
-            cells: [[0; WIDTH]; HEIGHT],
+            cells: [[CellContents::Empty; WIDTH]; HEIGHT],
         }
     }
 
     fn reset(&mut self) {
         for y in 0..HEIGHT {
             for x in 0..WIDTH {
-                self.cells[y][x] = 0;
+                self.cells[y][x] = CellContents::Empty;
             }
         }
     }
 
-    fn set_dir(&mut self, x: usize, y: usize, direction: Direction) {
-        self.cells[y][x] = match direction {
-            Direction::Up => Self::UP,
-            Direction::Down => Self::DOWN,
-            Direction::Left => Self::LEFT,
-            Direction::Right => Self::RIGHT,
+    fn set_dir(&mut self, position: console::Position, direction: Direction) {
+        self.cells[usize::from(position.row)][usize::from(position.col)] = match direction {
+            Direction::Up => CellContents::Up,
+            Direction::Down => CellContents::Down,
+            Direction::Left => CellContents::Left,
+            Direction::Right => CellContents::Right,
         }
     }
 
-    fn get_tail_dir(&self, x: usize, y: usize) -> Option<Direction> {
-        match self.cells[y][x] {
-            Self::UP => Some(Direction::Up),
-            Self::DOWN => Some(Direction::Down),
-            Self::LEFT => Some(Direction::Left),
-            Self::RIGHT => Some(Direction::Right),
+    fn get_tail_dir(&self, position: console::Position) -> Option<Direction> {
+        match self.cells[usize::from(position.row)][usize::from(position.col)] {
+            CellContents::Up => Some(Direction::Up),
+            CellContents::Down => Some(Direction::Down),
+            CellContents::Left => Some(Direction::Left),
+            CellContents::Right => Some(Direction::Right),
             _ => None,
         }
     }
 
-    fn set_food(&mut self, x: usize, y: usize) {
-        self.cells[y][x] = Self::FOOD;
+    fn set_food(&mut self, position: console::Position) {
+        self.cells[usize::from(position.row)][usize::from(position.col)] = CellContents::Food;
     }
 
-    fn is_food(&mut self, x: usize, y: usize) -> bool {
-        self.cells[y][x] == Self::FOOD
+    fn is_food(&mut self, position: console::Position) -> bool {
+        self.cells[usize::from(position.row)][usize::from(position.col)] == CellContents::Food
     }
 
-    fn is_body(&mut self, x: usize, y: usize) -> bool {
-        let cell = self.cells[y][x];
-        cell == Self::UP || cell == Self::DOWN || cell == Self::LEFT || cell == Self::RIGHT
+    fn is_body(&mut self, position: console::Position) -> bool {
+        let cell = self.cells[usize::from(position.row)][usize::from(position.col)];
+        cell == CellContents::Up
+            || cell == CellContents::Down
+            || cell == CellContents::Left
+            || cell == CellContents::Right
     }
 
-    fn is_empty(&mut self, x: usize, y: usize) -> bool {
-        self.cells[y][x] == 0
+    fn is_empty(&mut self, position: console::Position) -> bool {
+        self.cells[usize::from(position.row)][usize::from(position.col)] == CellContents::Empty
     }
 
-    fn clear(&mut self, x: usize, y: usize) {
-        self.cells[y][x] = 0;
+    fn clear(&mut self, position: console::Position) {
+        self.cells[usize::from(position.row)][usize::from(position.col)] = CellContents::Empty;
     }
 }
