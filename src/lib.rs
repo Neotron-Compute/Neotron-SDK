@@ -343,7 +343,7 @@ pub fn srand(seed: u16) {
 /// Get a 16-bit psuedorandom number
 pub fn rand() -> u16 {
     let mut state = RAND_STATE.load(core::sync::atomic::Ordering::Relaxed);
-    let bit = ((state >> 0) ^ (state >> 2) ^ (state >> 3) ^ (state >> 5)) & 0x01;
+    let bit = (state ^ (state >> 2) ^ (state >> 3) ^ (state >> 5)) & 0x01;
     state = (state >> 1) | (bit << 15);
     RAND_STATE.store(state, core::sync::atomic::Ordering::Relaxed);
     state

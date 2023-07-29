@@ -105,7 +105,7 @@ extern "C" fn api_read(
     mut buffer: neotron_api::FfiBuffer,
 ) -> neotron_api::Result<usize> {
     if fd == neotron_api::file::Handle::new_stdin() {
-        if let Some(b) = STDIN_RX.lock().unwrap().as_mut().unwrap().try_recv().ok() {
+        if let Ok(b) = STDIN_RX.lock().unwrap().as_mut().unwrap().try_recv() {
             buffer.as_mut_slice().unwrap()[0] = b;
             neotron_api::Result::Ok(1)
         } else {

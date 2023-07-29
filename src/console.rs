@@ -93,7 +93,7 @@ where
     if let Some(value) = iter.next() {
         let _ = write!(f, "{}", value as u8);
     }
-    while let Some(value) = iter.next() {
+    for value in iter {
         let _ = write!(f, ";{}", value as u8);
     }
     let _ = write!(f, "m");
