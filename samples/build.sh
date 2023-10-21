@@ -24,6 +24,6 @@ cargo build
 echo "Building for ${TARGET}"
 cargo build --target ${TARGET} --release
 
-for program in panic hello fault input-test snake; do
+for program in panic hello fault input-test; do
     cp ./target/${TARGET}/release/${program} ./release/${program}.elf
 done
