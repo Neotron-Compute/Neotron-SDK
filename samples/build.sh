@@ -24,6 +24,16 @@ cargo build
 echo "Building for ${TARGET}"
 cargo build --target ${TARGET} --release
 
+pushd chello
+./build.sh
+popd
+
+pushd asmhello
+./build.sh
+popd
+
 for program in panic hello fault input-test; do
     cp ./target/${TARGET}/release/${program} ./release/${program}.elf
 done
+cp ./asmhello/asmhello.elf ./release
+cp ./chello/chello.elf ./release
