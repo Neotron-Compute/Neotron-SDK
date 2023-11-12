@@ -23,6 +23,10 @@ jobs:
           rustup component add llvm-tools
           cargo install cargo-binutils
 
+      - name: Add targets
+        run: |
+          sudo apt-get -y install gcc-arm-none-eabi binutils-arm-none-eabi
+
       - name: Build lib (native)
         run: |
           cargo build --verbose
@@ -31,7 +35,7 @@ jobs:
         run: |
           cargo test --verbose
 
-      - name: Build samples (Cortex-M0)
+      - name: Build samples (Cortex-M0+)
         run: |
           cd samples && ./build.sh thumbv6m-none-eabi
 
