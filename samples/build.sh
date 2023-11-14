@@ -25,11 +25,11 @@ echo "Building for ${TARGET}"
 cargo build --target ${TARGET} --release
 
 pushd chello
-./build.sh
+./build.sh ${TARGET}
 popd
 
 pushd asmhello
-./build.sh
+./build.sh ${TARGET}
 popd
 
 for program in panic hello fault input-test; do
