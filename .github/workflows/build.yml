@@ -23,6 +23,16 @@ jobs:
           rustup component add llvm-tools
           cargo install cargo-binutils
 
+      - name: Add targets
+        run: |
+          sudo apt-get -y install gcc-arm-none-eabi binutils-arm-none-eabi
+
+      - name: Find slug name
+        run: |
+          slug=$(./describe.sh "${GITHUB_REF}")
+          echo "Building with slug '${slug}'"
+          echo "slug=${slug}" >> "${GITHUB_ENV}"
+
       - name: Build lib (native)
         run: |
           cargo build --verbose
@@ -31,14 +41,46 @@ jobs:
         run: |
           cargo test --verbose
 
-      - name: Build samples (Cortex-M0)
+      - name: Build samples (Cortex-M0+)
         run: |
-          cd samples && ./build.sh thumbv6m-none-eabi
+          cd samples
+          ./build.sh thumbv6m-none-eabi
+          mv release release-thumbv6m-none-eabi
 
       - name: Build samples (Cortex-M3)
         run: |
-          cd samples && ./build.sh thumbv7m-none-eabi
+          cd samples
+          ./build.sh thumbv7m-none-eabi
+          mv release release-thumbv7m-none-eabi
 
       - name: Build samples (Cortex-M4)
         run: |
-          cd samples && ./build.sh thumbv7em-none-eabi
+          cd samples
+          ./build.sh thumbv7em-none-eabi
+          mv release release-thumbv7em-none-eabi
+
+      - name: Assemble Artifacts
+        run: |
+          echo "Making ./neotron-sdk-${{ env.slug }}..."
+          mkdir -p ./neotron-sdk-${{ env.slug }}/samples
+          mv ./samples/release-thumbv6m-none-eabi ./neotron-sdk-${{ env.slug }}/samples/thumbv6m-none-eabi
+          mv ./samples/release-thumbv7m-none-eabi ./neotron-sdk-${{ env.slug }}/samples/thumbv7m-none-eabi
+          mv ./samples/release-thumbv7em-none-eabi ./neotron-sdk-${{ env.slug }}/samples/thumbv7em-none-eabi
+          echo "Compressing ./neotron-sdk-${{ env.slug }}.zip..."
+          zip -r ./neotron-sdk-${{ env.slug }}.zip ./neotron-sdk-${{ env.slug }}
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v3
+        if: ${{success()}}
+        with:
+          name: Artifacts
+          if-no-files-found: error
+          path: |
+            ./neotron-sdk-*/
+
+      - name: Create and Upload Release
+        if: github.event_name == 'push' && startswith(github.ref, 'refs/tags/')
+        id: create_release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: ./neotron-sdk-${{ env.slug }}.zip

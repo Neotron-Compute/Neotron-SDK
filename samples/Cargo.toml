@@ -3,9 +3,9 @@ members = [
     "fault",
     "hello",
     "input-test",
-    "snake",
     "panic",
 ]
+resolver = "2"
 
 [profile.release]
 opt-level = "z"

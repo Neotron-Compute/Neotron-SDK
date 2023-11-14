@@ -41,3 +41,11 @@ This application panics, printing a nice panic message.
 ## [`fault`](./fault)
 
 This application generates a Hard Fault.
+
+## [`asmhello`](./asmhello)
+
+A basic "Hello, world" but written in ARM assembly. It prints the string "Hello, world" to *standard output* and then exits with an exit code of 0.
+
+## [`chello`](../chello)
+
+A basic "Hello, world" but written in C. It prints the string "Hello, world" to *standard output* and then exits with an exit code of 0.
