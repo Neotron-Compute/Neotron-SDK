@@ -20,6 +20,7 @@ MEMORY
 }
 
 /* # Entry point = what the BIOS calls to start the OS */
+EXTERN(app_entry);
 ENTRY(app_entry);
 
 /* # Sections */
@@ -31,7 +32,7 @@ SECTIONS
     . = ALIGN(4);
     *(.text .text.*);
     . = ALIGN(4);
-  }
+  } > RAM
 
   /* ### .rodata */
   .rodata : ALIGN(4)
@@ -39,7 +40,7 @@ SECTIONS
     . = ALIGN(4);
     *(.rodata .rodata.*);
     . = ALIGN(4);
-  }
+  } > RAM
 
   /* ### .data */
   .data : ALIGN(4)
@@ -47,10 +48,7 @@ SECTIONS
     . = ALIGN(4);
     *(.data .data.*);
     . = ALIGN(4);
-  }
-
-  /* LMA of .data */
-  __sidata = LOADADDR(.data);
+  } > RAM
 
   /* ### .bss */
   .bss : ALIGN(4)
@@ -58,7 +56,7 @@ SECTIONS
     . = ALIGN(4);
     *(.bss .bss.*);
     . = ALIGN(4);
-  }
+  } > RAM
 
   /* ### .uninit */
   .uninit (NOLOAD) : ALIGN(4)
@@ -66,7 +64,10 @@ SECTIONS
     . = ALIGN(4);
     *(.uninit .uninit.*);
     . = ALIGN(4);
-  }
+  } > RAM
+
+  . = ALIGN(4);
+  end = .;
 
   /* ## .got */
   /* Dynamic relocations are unsupported. This section is only used to detect relocatable code in
