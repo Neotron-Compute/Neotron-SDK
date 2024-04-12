@@ -8,7 +8,7 @@
 // Imports
 // ============================================================================
 
-use core::sync::atomic::{AtomicPtr, Ordering};
+use core::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 
 pub use neotron_ffi::{FfiBuffer, FfiByteSlice, FfiString};
 
@@ -46,6 +46,12 @@ extern "C" {
 /// Once you've hit the application `main()`, this will be non-null.
 static API: AtomicPtr<Api> = AtomicPtr::new(core::ptr::null_mut());
 
+/// Number of arguments passed
+static ARG_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+/// Start of the argument list
+static ARG_PTR: AtomicPtr<FfiString> = AtomicPtr::new(core::ptr::null_mut());
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -53,7 +59,7 @@ static API: AtomicPtr<Api> = AtomicPtr::new(core::ptr::null_mut());
 /// The type of the application entry-point.
 ///
 /// The OS calls a function of this type.
-pub type AppStartFn = extern "C" fn(*mut crate::Api) -> i32;
+pub use neotron_api::AppStartFn;
 
 /// The result type for any SDK function.
 ///
@@ -259,9 +265,37 @@ impl Drop for ReadDir {
 /// Will jump to the application entry point, and `extern "C"` function
 /// called `main`.
 #[no_mangle]
-extern "C" fn app_entry(api: *mut Api) -> i32 {
-    API.store(api, Ordering::Relaxed);
+extern "C" fn app_entry(api: *const Api, argc: usize, argv: *const FfiString) -> i32 {
+    let _check: AppStartFn = app_entry;
+    API.store(api as *mut Api, Ordering::Relaxed);
+    ARG_COUNT.store(argc, Ordering::Relaxed);
+    ARG_PTR.store(argv as *mut FfiString, Ordering::Relaxed);
     unsafe { neotron_main() }
+}
+
+/// Get a command line argument.
+///
+/// Given an zero-based index, returns `Some(str)` if that argument was
+/// provided, otherwise None.
+///
+/// Does not return the name of the program in the first argument.
+#[cfg(target_os = "none")]
+pub fn arg(n: usize) -> Option<&'static str> {
+    let arg_count = ARG_COUNT.load(Ordering::Relaxed);
+    let arg_ptr = ARG_PTR.load(Ordering::Relaxed);
+    let arg_slice = unsafe { core::slice::from_raw_parts(arg_ptr, arg_count) };
+    arg_slice.get(n).map(|ffi| ffi.as_str())
+}
+
+/// Get a command line argument.
+///
+/// Given an zero-based index, returns `Some(str)` if that argument was
+/// provided, otherwise None.
+///
+/// Does not return the name of the program in the first argument.
+#[cfg(not(target_os = "none"))]
+pub fn arg(n: usize) -> Option<String> {
+    std::env::args().skip(1).nth(n)
 }
 
 /// Get information about a file on disk.
