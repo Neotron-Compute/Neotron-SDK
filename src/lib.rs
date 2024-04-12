@@ -207,12 +207,17 @@ impl File {
     }
 }
 
-impl core::ops::Drop for File {
+impl Drop for File {
     fn drop(&mut self) {
         let api = get_api();
-        // We could panic on error, but let's silently ignore it for now.
-        // If you care, call `file.close()`.
+        // Don't close default (in, out, err) handles on drop because we can't
+        // re-open them.
+        if self.0.value() <= 2 {
+            // don't close
+        } else {
+            // close it
         let _ = (api.close)(self.0);
+        }
     }
 }
 
