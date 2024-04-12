@@ -32,7 +32,7 @@ pushd asmhello
 ./build.sh ${TARGET}
 popd
 
-for program in panic hello fault input-test; do
+for program in panic hello fault input-test hexdump; do
     cp ./target/${TARGET}/release/${program} ./release/${program}.elf
 done
 cp ./asmhello/asmhello.elf ./release

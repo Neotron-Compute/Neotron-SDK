@@ -12,7 +12,7 @@ use core::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 
 pub use neotron_ffi::{FfiBuffer, FfiByteSlice, FfiString};
 
-pub use neotron_api::{path, Api, Error};
+pub use neotron_api::{file::Flags, path, Api, Error};
 
 use neotron_api as api;
 
@@ -207,12 +207,17 @@ impl File {
     }
 }
 
-impl core::ops::Drop for File {
+impl Drop for File {
     fn drop(&mut self) {
         let api = get_api();
-        // We could panic on error, but let's silently ignore it for now.
-        // If you care, call `file.close()`.
-        let _ = (api.close)(self.0);
+        // Don't close default (in, out, err) handles on drop because we can't
+        // re-open them.
+        if self.0.value() <= 2 {
+            // don't close
+        } else {
+            // close it
+            let _ = (api.close)(self.0);
+        }
     }
 }
 
@@ -365,6 +370,49 @@ pub fn delay(period: core::time::Duration) {
 #[cfg(not(target_os = "none"))]
 pub fn delay(period: core::time::Duration) {
     std::thread::sleep(period);
+}
+
+/// The result of a *Wait for Key* operation.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum WaitForKey {
+    /// User wants more data
+    More,
+    /// User wants to quit
+    Quit,
+}
+
+/// Wait for a key
+pub fn wait_for_key() -> WaitForKey {
+    use core::fmt::Write;
+    let mut ticker = "|/-\\".chars().cycle();
+    let stdin = stdin();
+    let mut stdout = stdout();
+    let result = loop {
+        let _ = write!(
+            stdout,
+            "\rPress Space for more, 'q' to quit... {}",
+            ticker.next().unwrap()
+        );
+        let mut buffer = [0u8; 1];
+        match stdin.read(&mut buffer) {
+            Ok(0) => {
+                // No data
+            }
+            Ok(_n) => {
+                if buffer[0] == b' ' {
+                    break WaitForKey::More;
+                } else if buffer[0] == b'q' || buffer[0] == b'Q' {
+                    break WaitForKey::Quit;
+                }
+            }
+            Err(e) => {
+                let _ = writeln!(stdout, "Error {:?}", e);
+                break WaitForKey::Quit;
+            }
+        }
+    };
+    let _ = write!(stdout, "\r                                         \r");
+    result
 }
 
 static RAND_STATE: core::sync::atomic::AtomicU16 = core::sync::atomic::AtomicU16::new(0);
