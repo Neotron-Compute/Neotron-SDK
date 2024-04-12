@@ -8,7 +8,7 @@ authors = ["Jonathan 'theJPster' Pallant <neotron@thejpster.org.uk>"]
 
 [dependencies]
 neotron-ffi = "0.1"
-neotron-api = "0.1"
+neotron-api = "0.2"
 
 [target.'cfg(unix)'.dependencies]
 crossterm = "0.26"
