@@ -2,6 +2,7 @@
 members = [
     "fault",
     "hello",
+    "hexdump",
     "input-test",
     "panic",
 ]
