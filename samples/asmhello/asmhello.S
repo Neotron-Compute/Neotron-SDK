@@ -26,11 +26,13 @@ app_entry:
     ldr r3, [r0, #8]
     // Set up file handle
     movs r0, #1
-    // Set up data pointer
+    // Get address of string
     ldr r1, =message
-    // Set up data length
+    // Get address of data length
     ldr r4, =message_len
-    ldr r2, [r4]
+    // Read data length (might not be aligned, as it follows the string, so only
+    // read one byte)
+    ldrb r2, [r4]
     // Call write function
     blx r3
     // Set return value
@@ -55,6 +57,6 @@ message:
 // Must come immediately after `message:`
 .type message_len,%object
 message_len:
-.long . - message  
+.byte . - message  
 
 // End of file

@@ -19,6 +19,6 @@ arm-none-eabi-gcc \
     -nostartfiles \
     -ffreestanding \
     -mcpu=$CPU \
-    -Wl,-T../neotron-cortex-m.ld \
+    -Wl,-T../../neotron-cortex-m.ld \
     -o asmhello.elf \
     asmhello.S \
