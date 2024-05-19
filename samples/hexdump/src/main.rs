@@ -50,7 +50,7 @@ fn real_main() -> Result<(), neotron_sdk::Error> {
         // print ascii (with padding)
         for b in valid {
             let ch = *b as char;
-            let _ = write!(stdout, "{}", if !ch.is_control() { ch } else { '?' });
+            let _ = write!(stdout, "{}", if !ch.is_control() { ch } else { '.' });
         }
         for _padding in 0..(buffer.len() - valid.len()) {
             let _ = write!(stdout, ".");
