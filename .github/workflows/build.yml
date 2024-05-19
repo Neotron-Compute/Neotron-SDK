@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: true
           fetch-depth: 0
@@ -23,7 +23,7 @@ jobs:
           rustup component add llvm-tools
           cargo install cargo-binutils
 
-      - name: Add targets
+      - name: Add C tools
         run: |
           sudo apt-get -y install gcc-arm-none-eabi binutils-arm-none-eabi
 
@@ -70,7 +70,7 @@ jobs:
           zip -r ./neotron-sdk-${{ env.slug }}.zip ./neotron-sdk-${{ env.slug }}
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: ${{success()}}
         with:
           name: Artifacts

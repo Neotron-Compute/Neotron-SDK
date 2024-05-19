@@ -1,11 +1,23 @@
 [target.thumbv7em-none-eabihf]
-rustflags = ["-C", "link-arg=-Tneotron-cortex-m.ld", "-C", "link-arg=--nmagic"]
+rustflags = [
+    "-Clink-arg=-Tneotron-cortex-m.ld", 
+    "-Clink-arg=--nmagic"
+]
 
 [target.thumbv7em-none-eabi]
-rustflags = ["-C", "link-arg=-Tneotron-cortex-m.ld", "-C", "link-arg=--nmagic"]
+rustflags = [
+    "-Clink-arg=-Tneotron-cortex-m.ld", 
+    "-Clink-arg=--nmagic"
+]
 
 [target.thumbv7m-none-eabi]
-rustflags = ["-C", "link-arg=-Tneotron-cortex-m.ld", "-C", "link-arg=--nmagic"]
+rustflags = [
+    "-Clink-arg=-Tneotron-cortex-m.ld", 
+    "-Clink-arg=--nmagic"
+]
 
 [target.thumbv6m-none-eabi]
-rustflags = ["-C", "link-arg=-Tneotron-cortex-m.ld", "-C", "link-arg=--nmagic"]
+rustflags = [
+    "-Clink-arg=-Tneotron-cortex-m.ld", 
+    "-Clink-arg=--nmagic"
+]

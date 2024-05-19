@@ -28,7 +28,7 @@ arm-none-eabi-gcc \
     -Wdouble-promotion \
     -Wextra \
     -Wl,-gc-sections \
-    -Wl,-T../neotron-cortex-m.ld \
+    -Wl,-T../../neotron-cortex-m.ld \
     -Wshadow \
     --specs=nano.specs \
     --specs=nosys.specs \
