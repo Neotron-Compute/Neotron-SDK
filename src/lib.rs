@@ -1,6 +1,19 @@
 //! The Neotron SDK
 //!
 //! Defines the API supplied to applications that run on Neotron OS
+//!
+//! You should use this crate when writing applications that run on Neotron OS.
+//!
+//! This SDK attempts to detect targets that support UNIX or Windows, and
+//! implements some code to talk to the appropriate UNIX or Windows API. This
+//! allows some level of portable, mainly to support application testing on
+//! those OSes.
+//!
+//! On a *bare-metal* target (i.e. where the OS is `none`), the SDK expects the
+//! Neotron OS to pass the callback table to the entry point
+//! ([`app_entry()`](app_entry)). Once initialised, the SDK then expects you
+//! application to provide an `extern "C"` `no-mangle` function called
+//! `neotron_main`, which the SDK will call.
 
 #![cfg_attr(target_os = "none", no_std)]
 
@@ -51,6 +64,9 @@ static ARG_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 /// Start of the argument list
 static ARG_PTR: AtomicPtr<FfiString> = AtomicPtr::new(core::ptr::null_mut());
+
+/// Random number generator state
+static RAND_STATE: core::sync::atomic::AtomicU16 = core::sync::atomic::AtomicU16::new(0);
 
 // ============================================================================
 // Types
@@ -261,16 +277,25 @@ impl Drop for ReadDir {
     }
 }
 
+/// The result of a *Wait for Key* operation.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum WaitForKey {
+    /// User wants more data
+    More,
+    /// User wants to quit
+    Quit,
+}
+
 // ============================================================================
 // Functions
 // ============================================================================
 
 /// The function the OS calls to start the application.
 ///
-/// Will jump to the application entry point, and `extern "C"` function
-/// called `main`.
+/// Will initialise the SDK and then jump to the application entry point, which
+/// is an `extern "C"` function called `neotron_main`.
 #[no_mangle]
-extern "C" fn app_entry(api: *const Api, argc: usize, argv: *const FfiString) -> i32 {
+pub extern "C" fn app_entry(api: *const Api, argc: usize, argv: *const FfiString) -> i32 {
     let _check: AppStartFn = app_entry;
     API.store(api as *mut Api, Ordering::Relaxed);
     ARG_COUNT.store(argc, Ordering::Relaxed);
@@ -304,21 +329,29 @@ pub fn arg(n: usize) -> Option<String> {
 }
 
 /// Get information about a file on disk.
+///
+/// **Note:** This function is not implemented currently.
 pub fn stat(_path: path::Path) -> Result<api::file::Stat> {
     todo!()
 }
 
 /// Delete a file from disk
+///
+/// **Note:** This function is not implemented currently.
 pub fn delete(_path: path::Path) -> Result<()> {
     todo!()
 }
 
 /// Change the current working directory to the given path.
+///
+/// **Note:** This function is not implemented currently.
 pub fn chdir(_path: path::Path) -> Result<()> {
     todo!()
 }
 
 /// Change the current working directory to that given by the handle.
+///
+/// **Note:** This function is not implemented currently.
 pub fn dchdir(_dir: api::dir::Handle) -> Result<()> {
     todo!()
 }
@@ -331,11 +364,15 @@ pub fn pwd<F: FnOnce(Result<path::Path>)>(callback: F) {
 }
 
 /// Alllocate some memory
+///
+/// **Note:** This function is not implemented currently.
 pub fn malloc(_size: usize, _alignment: usize) -> Result<*mut core::ffi::c_void> {
     todo!()
 }
 
 /// Free some previously allocated memory.
+///
+/// **Note:** This function is not implemented currently.
 pub fn free(_ptr: *mut core::ffi::c_void, _size: usize, _alignment: usize) {
     todo!()
 }
@@ -355,10 +392,12 @@ pub const fn stderr() -> File {
     File(api::file::Handle::new_stderr())
 }
 
-/// Delay for some milliseconds
+/// Delay for some given duration before returning.
+///
+/// Currently this does a badly calibrated nop busy-wait.
 #[cfg(target_os = "none")]
 pub fn delay(period: core::time::Duration) {
-    // TODO: sleep on real hardware?
+    // TODO: call OS sleep API?
     for _ in 0..period.as_micros() {
         for _ in 0..50 {
             unsafe { core::arch::asm!("nop") }
@@ -366,22 +405,16 @@ pub fn delay(period: core::time::Duration) {
     }
 }
 
-/// Delay for some milliseconds
+/// Delay for some given duration before returning.
 #[cfg(not(target_os = "none"))]
 pub fn delay(period: core::time::Duration) {
     std::thread::sleep(period);
 }
 
-/// The result of a *Wait for Key* operation.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum WaitForKey {
-    /// User wants more data
-    More,
-    /// User wants to quit
-    Quit,
-}
-
 /// Wait for a key
+///
+/// Prints `Press Space for more, 'q' to quit...` with a spinner, and waits
+/// for you to press the appropriate key.
 pub fn wait_for_key() -> WaitForKey {
     use core::fmt::Write;
     let mut ticker = "|/-\\".chars().cycle();
@@ -414,8 +447,6 @@ pub fn wait_for_key() -> WaitForKey {
     let _ = write!(stdout, "\r                                         \r");
     result
 }
-
-static RAND_STATE: core::sync::atomic::AtomicU16 = core::sync::atomic::AtomicU16::new(0);
 
 /// Seed the 16-bit psuedorandom number generator
 pub fn srand(seed: u16) {
