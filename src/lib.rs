@@ -470,6 +470,25 @@ fn get_api() -> &'static Api {
     unsafe { ptr.as_ref().unwrap() }
 }
 
+/// Initialisation function for OSes other than Neotron OS
+///
+/// If you are using this SDK on Windows or UNIX, your main function should
+/// call this function as the first thing it does. It will set up the SDK
+/// and then jump to `neotron_main()`.
+///
+/// ```
+/// #[cfg(not(target_os = "none"))]
+/// fn main() {
+///     neotron_sdk::init();
+/// }
+///
+///
+/// #[no_mangle]
+/// extern "C" fn neotron_main() -> i32 {
+///     // Your code here
+///     0
+/// }
+/// ```
 #[cfg(not(target_os = "none"))]
 pub fn init() {
     API.store(fake_os_api::get_ptr() as *mut Api, Ordering::Relaxed);
