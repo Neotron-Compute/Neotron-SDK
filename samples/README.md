@@ -18,12 +18,6 @@ Then copy the resulting `hello.elf` file to an SD card and insert it into your N
 > run
 ```
 
-If you don't have `rust-objcopy` installed, install it with:
-
-```console
-$ rustup component add llvm-tools
-```
-
 ## List of Sample Applications
 
 ## [`hello`](./hello)
