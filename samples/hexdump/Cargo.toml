@@ -7,6 +7,6 @@ authors = ["Jonathan 'theJPster' Pallant <neotron@thejpster.org.uk>"]
 description = "Prints information about files"
 
 [dependencies]
-neotron-sdk = { path = "../.." }
+neotron-sdk = { workspace = true }
 
 # See workspace for profile settings

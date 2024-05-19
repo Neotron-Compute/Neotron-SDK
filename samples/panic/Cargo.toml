@@ -7,6 +7,6 @@ authors = ["Jonathan 'theJPster' Pallant <neotron@thejpster.org.uk>"]
 description = "Hello World for Neotron systems"
 
 [dependencies]
-neotron-sdk = { path = "../..", features = ["fancy-panic"] }
+neotron-sdk = { workspace = true, features = ["fancy-panic"] }
 
 # See workspace for profile settings
