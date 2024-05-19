@@ -1,0 +1,21 @@
+[package]
+description = "SDK for writing applications for Neotron OS"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+name = "neotron-sdk"
+version = "0.1.0"
+authors = ["Jonathan 'theJPster' Pallant <neotron@thejpster.org.uk>"]
+
+[dependencies]
+neotron-ffi = "0.1"
+neotron-api = "0.2"
+
+[target.'cfg(unix)'.dependencies]
+crossterm = "0.26"
+
+[target.'cfg(windows)'.dependencies]
+crossterm = "0.26"
+
+[features]
+# Prints panic info. Costs you about 14K of code.
+fancy-panic = []

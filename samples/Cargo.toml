@@ -1,0 +1,13 @@
+[workspace]
+members = [
+    "fault",
+    "hello",
+    "hexdump",
+    "input-test",
+    "panic",
+]
+resolver = "2"
+
+[profile.release]
+opt-level = "z"
+lto = "fat"
