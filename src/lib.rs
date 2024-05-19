@@ -476,7 +476,7 @@ fn get_api() -> &'static Api {
 /// call this function as the first thing it does. It will set up the SDK
 /// and then jump to `neotron_main()`.
 ///
-/// ```
+/// ```no_run
 /// #[cfg(not(target_os = "none"))]
 /// fn main() {
 ///     neotron_sdk::init();
