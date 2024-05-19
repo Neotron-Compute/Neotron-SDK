@@ -4,7 +4,7 @@
  * Based on the [Rust Embedded Cortex-M crate](https://github.com/rust-embedded/cortex-m).
  * 
  * Copyright (c) 2016 Jorge Aparicio.
- * Copyright (c) 2023 Jonathan 'theJPster' Pallant and the Neotron Developers.
+ * Copyright (c) 2024 Jonathan 'theJPster' Pallant and the Neotron Developers.
  */
 
 MEMORY
@@ -26,7 +26,8 @@ ENTRY(app_entry);
 /* # Sections */
 SECTIONS
 {
-  /* ### .text */
+  /* ## .text */
+  /* All the executable code for our program */
   .text : ALIGN(4)
   {
     . = ALIGN(4);
@@ -34,7 +35,8 @@ SECTIONS
     . = ALIGN(4);
   } > RAM
 
-  /* ### .rodata */
+  /* ## .rodata */
+  /* All the read-only static data for our program */
   .rodata : ALIGN(4)
   {
     . = ALIGN(4);
@@ -42,7 +44,8 @@ SECTIONS
     . = ALIGN(4);
   } > RAM
 
-  /* ### .data */
+  /* ## .data */
+  /* All the read-write non-zero-initialised static data for our program */
   .data : ALIGN(4)
   {
     . = ALIGN(4);
@@ -50,7 +53,8 @@ SECTIONS
     . = ALIGN(4);
   } > RAM
 
-  /* ### .bss */
+  /* ## .bss */
+  /* All the read-write zero-initialised static data for our program */
   .bss : ALIGN(4)
   {
     . = ALIGN(4);
@@ -58,7 +62,8 @@ SECTIONS
     . = ALIGN(4);
   } > RAM
 
-  /* ### .uninit */
+  /* ## .uninit */
+  /* All the read-write uninitialised static data for our program */
   .uninit (NOLOAD) : ALIGN(4)
   {
     . = ALIGN(4);
@@ -66,12 +71,22 @@ SECTIONS
     . = ALIGN(4);
   } > RAM
 
+  /* ## Start of Heap */
+  /* Newlib's `sbrk` syscall uses the `end` symbol to mark the start of heap
+     memory. The `sbrk` syscall has a static variable tracking the edge of the
+     heap (`heap_end`) and that value moves upwards as more heap memory is
+     required. The `heap_end` value is initialised with the address of the `end`
+     symbol on first allocation.
+
+     See https://github.com/bminor/newlib/blob/master/libgloss/libnosys/sbrk.c
+     */
   . = ALIGN(4);
   end = .;
 
   /* ## .got */
-  /* Dynamic relocations are unsupported. This section is only used to detect relocatable code in
-     the input files and raise an error if relocatable code is found */
+  /* Dynamic relocations are unsupported. This section is only used to detect
+     relocatable code in the input files and raise an error if relocatable code
+     is found */
   .got (NOLOAD) :
   {
     KEEP(*(.got .got.*));
