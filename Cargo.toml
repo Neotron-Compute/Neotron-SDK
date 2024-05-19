@@ -19,3 +19,6 @@ crossterm = "0.26"
 [features]
 # Prints panic info. Costs you about 14K of code.
 fancy-panic = []
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu", "thumbv6m-none-eabi"]
