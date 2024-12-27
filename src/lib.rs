@@ -27,9 +27,13 @@ pub use neotron_ffi::{FfiBuffer, FfiByteSlice, FfiString};
 
 pub use neotron_api::{file::Flags, path, Api, Error};
 
+pub use neotron_common_bios::video::Mode as VideoMode;
+
 use neotron_api as api;
 
 pub mod console;
+
+pub mod ioctls;
 
 #[cfg(not(target_os = "none"))]
 mod fake_os_api;
@@ -204,8 +208,14 @@ impl File {
 
     /// Perform a special I/O control operation.
     ///
-    /// The allowed values of `command` and `value` are TBD.
-    pub fn ioctl(&self, command: u64, value: u64) -> Result<u64> {
+    /// The allowed values of `command` and `value` are defined in the
+    /// [`ioctls`] module.
+    ///
+    /// # Safety
+    ///
+    /// Refer to the documentation for the ioctl you are using. Raw pointers may
+    /// be involved.
+    pub unsafe fn ioctl(&self, command: u64, value: u64) -> Result<u64> {
         let api = get_api();
         match (api.ioctl)(self.0, command, value) {
             neotron_ffi::FfiResult::Ok(output) => Ok(output),
