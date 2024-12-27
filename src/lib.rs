@@ -189,7 +189,7 @@ impl File {
     ///
     /// * You cannot rename a file if it is currently open.
     /// * You cannot rename a file where the `old_path` and the `new_path` are
-    /// not on the same drive.
+    ///   not on the same drive.
     /// * Paths must confirm to the rules for the filesystem for the given drive.
     pub fn rename(old_path: path::Path, new_path: path::Path) -> Result<()> {
         let api = get_api();

@@ -381,7 +381,7 @@ typedef struct NeotronApi
    *
    * * You cannot rename a file if it is currently open.
    * * You cannot rename a file where the `old_path` and the `new_path` are
-   * not on the same drive.
+   *   not on the same drive.
    * * Paths must confirm to the rules for the filesystem for the given drive.
    */
   struct FfiResult_void (*rename)(struct FfiString old_path, struct FfiString new_path);
