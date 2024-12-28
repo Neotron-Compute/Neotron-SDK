@@ -5,7 +5,7 @@
 /// The corresponding value is the fill colour, which is taken modulo the number of on-screen colours.
 pub const COMMAND_CLEAR_SCREEN: u64 = 0;
 
-/// Plot a chunky pixel
+/// Plot a chunky pixel (and move the cursor).
 ///
 /// The command contains [ x | y | mode | colour ].
 ///
@@ -29,16 +29,52 @@ pub const COMMAND_CHUNKY_PLOT: u64 = 1;
 /// Use [`change_mode_value`] to construct a value.
 pub const COMMAND_CHANGE_MODE: u64 = 2;
 
-/// Calculate a 64-bit value argument for a gfx ioctl
+/// Move the cursor
+///
+/// The command contains [ x | y | <padding> ].
+///
+/// The graphics handle maintains a virtual cursor position. This is used for
+/// plotting lines for example - you move the cursor to one end of the line, and
+/// then issue a LINE_DRAW ioctl containing the other end of the line. This saves
+/// having to try and pass two sets of co-ordinates within one ioctl.
+///
+/// Use [`move_cursor_value`] to construct a value.
+pub const COMMAND_MOVE_CURSOR: u64 = 3;
+
+/// Draw a line
+///
+/// The command contains [ x | y | mode | colour ].
+///
+/// * `x` is 16 bits and marks the final horizontal position (0 is left)
+/// * `y` is 16 bits and marks the final vertical position (0 is top)
+/// * `mode` is 8 bits and is currently ignored
+/// * `colour` is 24 bits, and is taken modulo the number of on-screen colours
+///
+/// The start position is the cursor position. The cursor is updated to the final position.
+///
+/// Use [`draw_line_value`] to construct a value.
+pub const COMMAND_DRAW_LINE: u64 = 4;
+
+/// Calculate a 64-bit value argument for the [`COMMAND_CHUNKY_PLOT`] gfx ioctl
 pub fn chunky_plot_value(x: u16, y: u16, colour: u32) -> u64 {
     (x as u64) << 48 | (y as u64) << 32 | (colour & 0xFFFFFF) as u64
 }
 
-/// Calculate a 64-bit value argument for a gfx ioctl
+/// Calculate a 64-bit value argument for the [`COMMAND_CHANGE_MODE`] gfx ioctl
 pub fn change_mode_value(mode: crate::VideoMode, fb_ptr: *mut u32) -> u64 {
     let fb_ptr = fb_ptr as usize as u64;
     let mode = mode.as_u8() as u64;
     mode << 32 | fb_ptr
+}
+
+/// Calculate a 64-bit value argument for the [`COMMAND_MOVE_CURSOR`] gfx ioctl
+pub fn move_cursor_value(x: u16, y: u16) -> u64 {
+    (x as u64) << 48 | (y as u64) << 32
+}
+
+/// Calculate a 64-bit value argument for the [`COMMAND_DRAW_LINE`] gfx ioctl
+pub fn draw_line_value(end_x: u16, end_y: u16, colour: u32) -> u64 {
+    (end_x as u64) << 48 | (end_y as u64) << 32 | (colour & 0xFFFFFF) as u64
 }
 
 // End of file

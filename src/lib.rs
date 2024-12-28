@@ -27,7 +27,7 @@ pub use neotron_ffi::{FfiBuffer, FfiByteSlice, FfiString};
 
 pub use neotron_api::{file::Flags, path, Api, Error};
 
-pub use neotron_common_bios::video::Mode as VideoMode;
+pub use neotron_common_bios::video::{Format as VideoFormat, Mode as VideoMode};
 
 use neotron_api as api;
 
