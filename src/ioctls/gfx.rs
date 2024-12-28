@@ -55,6 +55,16 @@ pub const COMMAND_MOVE_CURSOR: u64 = 3;
 /// Use [`draw_line_value`] to construct a value.
 pub const COMMAND_DRAW_LINE: u64 = 4;
 
+/// Set a palette entry
+///
+/// The command contains [ <padding> | II | RR | GG | BB ]
+///
+/// II, RR, GG and BB are 8-bit values where II is the index into the 256 long
+/// palette, and RR, GG and BB are the 24-bit RGB colour for that index.
+///
+/// Use [`set_palette_value`] to construct a value.
+pub const COMMAND_SET_PALETTE: u64 = 5;
+
 /// Calculate a 64-bit value argument for the [`COMMAND_CHUNKY_PLOT`] gfx ioctl
 pub fn chunky_plot_value(x: u16, y: u16, colour: u32) -> u64 {
     (x as u64) << 48 | (y as u64) << 32 | (colour & 0xFFFFFF) as u64
@@ -75,6 +85,15 @@ pub fn move_cursor_value(x: u16, y: u16) -> u64 {
 /// Calculate a 64-bit value argument for the [`COMMAND_DRAW_LINE`] gfx ioctl
 pub fn draw_line_value(end_x: u16, end_y: u16, colour: u32) -> u64 {
     (end_x as u64) << 48 | (end_y as u64) << 32 | (colour & 0xFFFFFF) as u64
+}
+
+/// Calculate a 64-bit value argument for the [`COMMAND_SET_PALETTE`] gfx ioctl
+pub fn set_palette_value(index: u8, r: u8, g: u8, b: u8) -> u64 {
+    let mut result = (index as u64) << 24;
+    result |= (r as u64) << 16;
+    result |= (g as u64) << 8;
+    result |= b as u64;
+    result
 }
 
 // End of file
