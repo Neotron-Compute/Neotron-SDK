@@ -27,9 +27,13 @@ pub use neotron_ffi::{FfiBuffer, FfiByteSlice, FfiString};
 
 pub use neotron_api::{file::Flags, path, Api, Error};
 
+pub use neotron_common_bios::video::{Format as VideoFormat, Mode as VideoMode};
+
 use neotron_api as api;
 
 pub mod console;
+
+pub mod ioctls;
 
 #[cfg(not(target_os = "none"))]
 mod fake_os_api;
@@ -66,7 +70,7 @@ static ARG_COUNT: AtomicUsize = AtomicUsize::new(0);
 static ARG_PTR: AtomicPtr<FfiString> = AtomicPtr::new(core::ptr::null_mut());
 
 /// Random number generator state
-static RAND_STATE: core::sync::atomic::AtomicU16 = core::sync::atomic::AtomicU16::new(0);
+static RAND_STATE: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
 
 // ============================================================================
 // Types
@@ -189,7 +193,7 @@ impl File {
     ///
     /// * You cannot rename a file if it is currently open.
     /// * You cannot rename a file where the `old_path` and the `new_path` are
-    /// not on the same drive.
+    ///   not on the same drive.
     /// * Paths must confirm to the rules for the filesystem for the given drive.
     pub fn rename(old_path: path::Path, new_path: path::Path) -> Result<()> {
         let api = get_api();
@@ -204,8 +208,14 @@ impl File {
 
     /// Perform a special I/O control operation.
     ///
-    /// The allowed values of `command` and `value` are TBD.
-    pub fn ioctl(&self, command: u64, value: u64) -> Result<u64> {
+    /// The allowed values of `command` and `value` are defined in the
+    /// [`ioctls`] module.
+    ///
+    /// # Safety
+    ///
+    /// Refer to the documentation for the ioctl you are using. Raw pointers may
+    /// be involved.
+    pub unsafe fn ioctl(&self, command: u64, value: u64) -> Result<u64> {
         let api = get_api();
         match (api.ioctl)(self.0, command, value) {
             neotron_ffi::FfiResult::Ok(output) => Ok(output),
@@ -449,17 +459,34 @@ pub fn wait_for_key() -> WaitForKey {
 }
 
 /// Seed the 16-bit psuedorandom number generator
-pub fn srand(seed: u16) {
+pub fn srand(seed: u32) {
     RAND_STATE.store(seed, core::sync::atomic::Ordering::Relaxed);
 }
 
-/// Get a 16-bit psuedorandom number
-pub fn rand() -> u16 {
+/// Get a 32-bit psuedorandom number
+pub fn rand() -> u32 {
     let mut state = RAND_STATE.load(core::sync::atomic::Ordering::Relaxed);
-    let bit = (state ^ (state >> 2) ^ (state >> 3) ^ (state >> 5)) & 0x01;
-    state = (state >> 1) | (bit << 15);
+    state = state.wrapping_mul(1103515245).wrapping_add(12345);
+    let bits1 = state >> 16;
+    state = state.wrapping_mul(1103515245).wrapping_add(12345);
+    let bits2 = state >> 16;
     RAND_STATE.store(state, core::sync::atomic::Ordering::Relaxed);
-    state
+    (bits1 << 16) | bits2
+}
+
+/// Get a random number from a range
+pub fn random_in(range: core::ops::Range<u32>) -> u32 {
+    let count = range.end - range.start;
+    let bucket_size = u32::MAX / count;
+    let limit = bucket_size * count;
+    let rand_value = loop {
+        let temp = rand() as u32;
+        if temp <= limit {
+            break temp;
+        }
+    };
+    let result = rand_value / bucket_size;
+    result + range.start
 }
 
 /// Get the API structure so we can call APIs manually.
